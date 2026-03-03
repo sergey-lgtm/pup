@@ -32,6 +32,7 @@ pub mod on_call;
 pub mod organizations;
 pub mod product_analytics;
 pub mod rum;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod runbooks;
 pub mod scorecards;
 pub mod security;
@@ -45,4 +46,5 @@ pub mod test;
 pub mod traces;
 pub mod usage;
 pub mod users;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod workflows;

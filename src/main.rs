@@ -5,6 +5,7 @@ mod client;
 mod commands;
 mod config;
 mod formatter;
+#[cfg(not(target_arch = "wasm32"))]
 mod runbooks;
 mod useragent;
 mod util;
@@ -1758,6 +1759,7 @@ enum Commands {
         #[command(subcommand)]
         action: UserActions,
     },
+    #[cfg(not(target_arch = "wasm32"))]
     /// Execute and manage local operational runbooks
     ///
     /// Runbooks are YAML files stored in ~/.config/pup/runbooks/ that define
@@ -1791,6 +1793,7 @@ enum Commands {
         #[command(subcommand)]
         action: RunbookActions,
     },
+    #[cfg(not(target_arch = "wasm32"))]
     /// Trigger and monitor Datadog Workflows
     ///
     /// Trigger Datadog Workflow automations and monitor their execution.
@@ -4267,6 +4270,7 @@ enum AgentActions {
 }
 
 // ---- Runbooks ----
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Subcommand)]
 enum RunbookActions {
     /// List available runbooks
@@ -4289,6 +4293,7 @@ enum RunbookActions {
 }
 
 // ---- Workflows ----
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Subcommand)]
 enum WorkflowActions {
     /// Trigger a Datadog Workflow
@@ -4307,6 +4312,7 @@ enum WorkflowActions {
     },
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Subcommand)]
 enum WorkflowInstanceActions {
     /// List workflow instances
@@ -6507,6 +6513,7 @@ async fn main_inner() -> anyhow::Result<()> {
             }
         }
         // --- Runbooks ---
+        #[cfg(not(target_arch = "wasm32"))]
         Commands::Runbooks { action } => match action {
             RunbookActions::List { tag } => {
                 commands::runbooks::list(&cfg, tag)?;
@@ -6525,6 +6532,7 @@ async fn main_inner() -> anyhow::Result<()> {
             }
         },
         // --- Workflows ---
+        #[cfg(not(target_arch = "wasm32"))]
         Commands::Workflows { action } => {
             cfg.validate_auth()?;
             match action {
