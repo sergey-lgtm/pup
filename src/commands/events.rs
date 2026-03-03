@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV1::api_events::{
     EventsAPI as EventsV1API, ListEventsOptionalParams,
@@ -65,16 +65,11 @@ pub async fn search(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    // Events search is OAuth-excluded — require API keys
-    if !cfg.has_api_keys() {
-        bail!(
-            "events search requires API key authentication (DD_API_KEY + DD_APP_KEY).\n\
-             This endpoint does not support bearer token auth."
-        );
-    }
-
     let dd_cfg = client::make_dd_config(cfg);
-    let api = EventsV2API::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => EventsV2API::with_client_and_config(dd_cfg, c),
+        None => EventsV2API::with_config(dd_cfg),
+    };
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;

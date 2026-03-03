@@ -91,6 +91,19 @@ pub fn default_scopes() -> Vec<&'static str> {
         "oci_configurations_manage",
         "timeseries_query",
         "usage_read",
+        // Integrations (Jira, ServiceNow, Slack, Webhooks)
+        "integrations_read",
+        "manage_integrations",
+        // Organizations
+        "org_management",
+        // Security Monitoring (filters + rules write)
+        "security_monitoring_filters_write",
+        "security_monitoring_rules_write",
+        // Logs index management
+        "logs_modify_indexes",
+        // HAMR (disaster recovery)
+        "disaster_recovery_status_read",
+        "disaster_recovery_status_write",
     ]
 }
 

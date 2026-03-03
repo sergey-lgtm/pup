@@ -342,11 +342,6 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
         path: "/api/v2/application_keys/",
         method: "DELETE",
     },
-    // Events (1)
-    EndpointRequirement {
-        path: "/api/v2/events/search",
-        method: "POST",
-    },
     // Fleet Automation (15)
     EndpointRequirement {
         path: "/api/v2/fleet/agents",
@@ -566,8 +561,8 @@ mod tests {
     }
 
     #[test]
-    fn test_requires_api_key_fallback_events() {
-        assert!(requires_api_key_fallback("POST", "/api/v2/events/search"));
+    fn test_no_fallback_for_events_search() {
+        assert!(!requires_api_key_fallback("POST", "/api/v2/events/search"));
     }
 
     #[test]
@@ -606,7 +601,7 @@ mod tests {
 
     #[test]
     fn test_oauth_excluded_count() {
-        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 40);
+        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 39);
     }
 
     #[test]
