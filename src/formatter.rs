@@ -717,6 +717,7 @@ mod tests {
             output_format: OutputFormat::Json,
             auto_approve: false,
             agent_mode: false,
+            read_only: false,
         };
         let data = serde_json::json!({"hello": "world"});
         assert!(output(&cfg, &data).is_ok());

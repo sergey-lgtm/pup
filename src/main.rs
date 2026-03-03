@@ -20,11 +20,11 @@ pub(crate) mod test_utils {
     pub static ENV_LOCK: Mutex<()> = Mutex::new(());
 }
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "pup", version = version::VERSION, about = "Datadog API CLI")]
-struct Cli {
+pub(crate) struct Cli {
     /// Output format (json, table, yaml)
     #[arg(short, long, global = true, default_value = "json")]
     output: String,
@@ -34,6 +34,9 @@ struct Cli {
     /// Enable agent mode
     #[arg(long, global = true)]
     agent: bool,
+    /// Block all write operations (create, update, delete)
+    #[arg(long, global = true)]
+    read_only: bool,
     /// Named org session (see 'pup auth login --org')
     #[arg(long, global = true)]
     org: Option<String>,
@@ -4738,6 +4741,39 @@ fn build_compact_agent_schema(cmd: &clap::Command) -> serde_json::Value {
     serde_json::Value::Object(root)
 }
 
+/// Returns true if a leaf subcommand name represents a write (mutating) operation.
+/// Used by both the read-only runtime guard and the agent JSON schema.
+pub(crate) fn is_write_command_name(name: &str) -> bool {
+    name == "delete"
+        || name == "create"
+        || name == "update"
+        || name == "cancel"
+        || name == "trigger"
+        || name == "set"
+        || name == "add"
+        || name == "remove"
+        || name == "assign"
+        || name == "archive"
+        || name == "unarchive"
+        || name == "activate"
+        || name == "deactivate"
+        || name == "move"
+        || name == "link"
+        || name == "unlink"
+        || name == "configure"
+        || name == "upgrade"
+        || name.starts_with("update-")
+        || name.starts_with("create-")
+        || name == "submit"
+        || name == "send"
+        || name == "import"
+        || name == "register"
+        || name == "unregister"
+        || name.contains("delete")
+        || name == "patch"
+        || name.starts_with("patch-")
+}
+
 fn build_command_schema(cmd: &clap::Command, parent_path: &str) -> serde_json::Value {
     let mut obj = serde_json::Map::new();
     let name = cmd.get_name().to_string();
@@ -4756,28 +4792,7 @@ fn build_command_schema(cmd: &clap::Command, parent_path: &str) -> serde_json::V
 
     // Determine read_only based on command name — but only emit for leaf commands
     // (commands with no subcommands), matching Go behavior
-    let is_write = name == "delete"
-        || name == "create"
-        || name == "update"
-        || name == "cancel"
-        || name == "trigger"
-        || name == "set"
-        || name == "add"
-        || name == "remove"
-        || name == "assign"
-        || name == "archive"
-        || name == "unarchive"
-        || name == "activate"
-        || name == "deactivate"
-        || name.starts_with("update-")
-        || name.starts_with("create-")
-        || name == "submit"
-        || name == "send"
-        || name == "import"
-        || name == "register"
-        || name == "unregister"
-        || name.contains("delete")
-        || name.contains("patch");
+    let is_write = is_write_command_name(&name);
 
     // Flags (named --flags only, excluding positional args and globals)
     let flags: Vec<serde_json::Value> = cmd
@@ -4867,6 +4882,19 @@ async fn main() -> anyhow::Result<()> {
     main_inner().await
 }
 
+pub(crate) fn get_leaf_subcommand_name(matches: &clap::ArgMatches) -> Option<String> {
+    match matches.subcommand() {
+        Some((name, sub_matches)) => {
+            get_leaf_subcommand_name(sub_matches).or(Some(name.to_string()))
+        }
+        None => None,
+    }
+}
+
+pub(crate) fn get_top_level_subcommand_name(matches: &clap::ArgMatches) -> Option<String> {
+    matches.subcommand().map(|(name, _)| name.to_string())
+}
+
 async fn main_inner() -> anyhow::Result<()> {
     // In agent mode, intercept --help to return a JSON schema instead of plain text.
     let args: Vec<String> = std::env::args().collect();
@@ -4894,7 +4922,8 @@ async fn main_inner() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let cli = Cli::parse();
+    let matches = Cli::command().get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     let mut cfg = config::Config::from_env()?;
 
     // Apply flag overrides
@@ -4919,6 +4948,26 @@ async fn main_inner() -> anyhow::Result<()> {
             .is_none()
         {
             cfg.access_token = config::load_token_from_storage(&cfg.site, cfg.org.as_deref());
+        }
+    }
+
+    if cli.read_only {
+        cfg.read_only = true;
+    }
+    if cfg.read_only {
+        let top = get_top_level_subcommand_name(&matches);
+        let is_local_only = matches!(top.as_deref(), Some("auth") | Some("alias"));
+        if !is_local_only {
+            if let Some(leaf) = get_leaf_subcommand_name(&matches) {
+                if is_write_command_name(&leaf) {
+                    anyhow::bail!(
+                        "write operation '{}' is blocked in read-only mode \
+                         (--read-only flag, DD_READ_ONLY / DD_CLI_READ_ONLY env var, \
+                         or read_only: true in config file)",
+                        leaf
+                    );
+                }
+            }
         }
     }
 

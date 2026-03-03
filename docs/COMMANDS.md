@@ -179,6 +179,7 @@ Available on all commands:
 --output string      Output format: json, yaml, table (default: json)
 --verbose            Enable verbose logging
 --yes                Skip confirmation prompts
+--read-only          Block all write operations (create, update, delete)
 ```
 
 ## Recent Enhancements

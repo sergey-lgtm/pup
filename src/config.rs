@@ -13,6 +13,7 @@ pub struct Config {
     pub output_format: OutputFormat,
     pub auto_approve: bool,
     pub agent_mode: bool,
+    pub read_only: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -55,6 +56,7 @@ struct FileConfig {
     org: Option<String>,
     output: Option<String>,
     auto_approve: Option<bool>,
+    read_only: Option<bool>,
 }
 
 impl Config {
@@ -85,6 +87,9 @@ impl Config {
                 || env_bool("DD_CLI_AUTO_APPROVE")
                 || file_cfg.auto_approve.unwrap_or(false),
             agent_mode: false, // set by caller from --agent flag or useragent detection
+            read_only: env_bool("DD_READ_ONLY")
+                || env_bool("DD_CLI_READ_ONLY")
+                || file_cfg.read_only.unwrap_or(false),
         };
 
         Ok(cfg)
@@ -108,6 +113,7 @@ impl Config {
             output_format: OutputFormat::Json,
             auto_approve: false,
             agent_mode: false,
+            read_only: false,
         }
     }
 
@@ -253,6 +259,7 @@ mod tests {
             output_format: OutputFormat::Json,
             auto_approve: false,
             agent_mode: false,
+            read_only: false,
         }
     }
 
@@ -479,5 +486,37 @@ mod tests {
             Some("fallback".into())
         );
         std::env::remove_var("__PUP_TEST_ENV_EMPTY__");
+    }
+
+    #[test]
+    fn test_file_config_read_only() {
+        let yaml = "read_only: true\n";
+        let fc: FileConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(fc.read_only, Some(true));
+    }
+
+    #[test]
+    fn test_read_only_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("DD_READ_ONLY");
+        std::env::remove_var("DD_CLI_READ_ONLY");
+        std::env::set_var("PUP_CONFIG_DIR", "/tmp/pup_test_nonexistent");
+        std::env::set_var("DD_ACCESS_TOKEN", "test");
+
+        let cfg = Config::from_env().unwrap();
+        assert!(!cfg.read_only);
+
+        std::env::set_var("DD_READ_ONLY", "true");
+        let cfg = Config::from_env().unwrap();
+        assert!(cfg.read_only);
+        std::env::remove_var("DD_READ_ONLY");
+
+        std::env::set_var("DD_CLI_READ_ONLY", "1");
+        let cfg = Config::from_env().unwrap();
+        assert!(cfg.read_only);
+        std::env::remove_var("DD_CLI_READ_ONLY");
+
+        std::env::remove_var("DD_ACCESS_TOKEN");
+        std::env::remove_var("PUP_CONFIG_DIR");
     }
 }

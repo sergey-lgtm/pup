@@ -8,6 +8,7 @@
 //! its own mockito server, so there's no cross-test interference.
 
 use crate::config::{Config, OutputFormat};
+use clap::CommandFactory;
 use std::sync::Mutex;
 
 /// Global mutex to serialize tests that modify process-wide env vars.
@@ -32,6 +33,7 @@ fn test_config(mock_url: &str) -> Config {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     }
 }
 
@@ -391,6 +393,7 @@ async fn test_logs_search_with_oauth() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let _mock = mock_any(&mut server, "POST", r#"{"data": []}"#).await;
@@ -692,6 +695,7 @@ async fn test_events_search_requires_api_keys() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let result =
@@ -721,6 +725,7 @@ async fn test_api_get() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -754,6 +759,7 @@ async fn test_api_get_with_query() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -791,6 +797,7 @@ async fn test_api_post() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -823,6 +830,7 @@ async fn test_api_put() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -855,6 +863,7 @@ async fn test_api_patch() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -887,6 +896,7 @@ async fn test_api_delete() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -918,6 +928,7 @@ async fn test_api_error_response() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -950,6 +961,7 @@ async fn test_api_bearer_auth() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -980,6 +992,7 @@ async fn test_api_no_auth() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let result = crate::api::get(&cfg, "/api/v1/test", &[]).await;
@@ -1006,6 +1019,7 @@ async fn test_api_empty_response() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -1038,6 +1052,7 @@ async fn test_api_server_error() {
         output_format: OutputFormat::Json,
         auto_approve: false,
         agent_mode: false,
+        read_only: false,
     };
 
     let mock = server
@@ -1911,4 +1926,101 @@ async fn test_apm_services_list() {
     let _ =
         crate::commands::apm::services_list(&cfg, "prod".into(), "1h".into(), "now".into()).await;
     cleanup_env();
+}
+
+// -------------------------------------------------------------------------
+// Read-only mode
+// -------------------------------------------------------------------------
+
+#[test]
+fn test_is_write_command_name_writes() {
+    assert!(crate::is_write_command_name("delete"));
+    assert!(crate::is_write_command_name("create"));
+    assert!(crate::is_write_command_name("update"));
+    assert!(crate::is_write_command_name("cancel"));
+    assert!(crate::is_write_command_name("trigger"));
+    assert!(crate::is_write_command_name("submit"));
+    assert!(crate::is_write_command_name("send"));
+    assert!(crate::is_write_command_name("move"));
+    assert!(crate::is_write_command_name("link"));
+    assert!(crate::is_write_command_name("unlink"));
+    assert!(crate::is_write_command_name("configure"));
+    assert!(crate::is_write_command_name("upgrade"));
+    assert!(crate::is_write_command_name("update-status"));
+    assert!(crate::is_write_command_name("create-page"));
+    assert!(crate::is_write_command_name("patch"));
+    assert!(crate::is_write_command_name("patch-deployment"));
+}
+
+#[test]
+fn test_is_write_command_name_reads() {
+    assert!(!crate::is_write_command_name("list"));
+    assert!(!crate::is_write_command_name("get"));
+    assert!(!crate::is_write_command_name("search"));
+    assert!(!crate::is_write_command_name("query"));
+    assert!(!crate::is_write_command_name("aggregate"));
+    assert!(!crate::is_write_command_name("status"));
+    assert!(!crate::is_write_command_name("dispatch"));
+}
+
+#[test]
+fn test_read_only_guard_blocks_write() {
+    let matches = crate::Cli::command()
+        .try_get_matches_from(["pup", "monitors", "delete", "12345"])
+        .unwrap();
+    let leaf = crate::get_leaf_subcommand_name(&matches).unwrap();
+    assert!(crate::is_write_command_name(&leaf));
+}
+
+#[test]
+fn test_read_only_guard_allows_read() {
+    let matches = crate::Cli::command()
+        .try_get_matches_from(["pup", "monitors", "list"])
+        .unwrap();
+    let leaf = crate::get_leaf_subcommand_name(&matches).unwrap();
+    assert!(!crate::is_write_command_name(&leaf));
+}
+
+#[test]
+fn test_read_only_guard_nested_read() {
+    let matches = crate::Cli::command()
+        .try_get_matches_from(["pup", "rum", "apps", "list"])
+        .unwrap();
+    let leaf = crate::get_leaf_subcommand_name(&matches).unwrap();
+    assert!(!crate::is_write_command_name(&leaf));
+}
+
+#[test]
+fn test_read_only_guard_nested_write() {
+    let matches = crate::Cli::command()
+        .try_get_matches_from([
+            "pup",
+            "cases",
+            "jira",
+            "create-issue",
+            "123",
+            "--file",
+            "f.json",
+        ])
+        .unwrap();
+    let leaf = crate::get_leaf_subcommand_name(&matches).unwrap();
+    assert!(crate::is_write_command_name(&leaf));
+}
+
+#[test]
+fn test_read_only_guard_exempts_alias() {
+    let matches = crate::Cli::command()
+        .try_get_matches_from(["pup", "alias", "set", "foo", "logs search *"])
+        .unwrap();
+    let top = crate::get_top_level_subcommand_name(&matches);
+    assert_eq!(top.as_deref(), Some("alias"));
+}
+
+#[test]
+fn test_read_only_guard_exempts_auth() {
+    let matches = crate::Cli::command()
+        .try_get_matches_from(["pup", "auth", "login"])
+        .unwrap();
+    let top = crate::get_top_level_subcommand_name(&matches);
+    assert_eq!(top.as_deref(), Some("auth"));
 }

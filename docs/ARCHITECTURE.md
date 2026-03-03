@@ -287,6 +287,9 @@ site: datadoghq.com
 output: json
 verbose: false
 
+# Safety
+read_only: false
+
 # Defaults
 default_from: 1h
 default_to: now

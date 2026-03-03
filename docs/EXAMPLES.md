@@ -412,6 +412,16 @@ pup --verbose monitors list
 pup --yes monitors delete 12345678
 ```
 
+### Read-Only Mode
+```bash
+# Block all write operations (create, update, delete)
+pup --read-only monitors list
+pup --read-only dashboards list
+
+# Also available via env var or config file
+DD_READ_ONLY=true pup monitors list
+```
+
 ## Common Workflows
 
 ### Monitoring Dashboard
