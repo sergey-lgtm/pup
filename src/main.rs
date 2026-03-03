@@ -5,6 +5,7 @@ mod client;
 mod commands;
 mod config;
 mod formatter;
+mod runbooks;
 mod useragent;
 mod util;
 mod version;
@@ -1756,6 +1757,71 @@ enum Commands {
     Users {
         #[command(subcommand)]
         action: UserActions,
+    },
+    /// Execute and manage local operational runbooks
+    ///
+    /// Runbooks are YAML files stored in ~/.config/pup/runbooks/ that define
+    /// sequential operational steps mixing pup commands, shell tools, Datadog
+    /// Workflows, and human confirmation gates.
+    ///
+    /// COMMANDS:
+    ///   list        List available runbooks (optionally filtered by tags)
+    ///   describe    Show runbook details and steps
+    ///   run         Execute a runbook with optional variable overrides
+    ///   validate    Validate runbook structure without executing
+    ///   import      Import a runbook from a file path or URL
+    ///
+    /// EXAMPLES:
+    ///   # List all runbooks
+    ///   pup runbooks list
+    ///
+    ///   # List runbooks tagged type:deployment
+    ///   pup runbooks list --tag=type:deployment
+    ///
+    ///   # Run a runbook with variable overrides
+    ///   pup runbooks run deploy-service --set SERVICE=payments --set VERSION=1.2.3
+    ///
+    ///   # Validate without executing
+    ///   pup runbooks validate deploy-service
+    ///
+    ///   # Import from a file or URL
+    ///   pup runbooks import ./my-runbook.yaml
+    #[command(verbatim_doc_comment)]
+    Runbooks {
+        #[command(subcommand)]
+        action: RunbookActions,
+    },
+    /// Trigger and monitor Datadog Workflows
+    ///
+    /// Trigger Datadog Workflow automations and monitor their execution.
+    ///
+    /// COMMANDS:
+    ///   run               Trigger a workflow (optionally watch to completion)
+    ///   instances list    List workflow instances
+    ///   instances get     Get a specific workflow instance
+    ///
+    /// EXAMPLES:
+    ///   # Trigger a workflow
+    ///   pup workflows run --id=<workflow-id>
+    ///
+    ///   # Trigger and watch to completion
+    ///   pup workflows run --id=<workflow-id> --watch
+    ///
+    ///   # Trigger with inputs
+    ///   pup workflows run --id=<workflow-id> --input service=payments --input env=prod
+    ///
+    ///   # List workflow instances
+    ///   pup workflows instances list --workflow-id=<workflow-id>
+    ///
+    ///   # Get a specific instance
+    ///   pup workflows instances get --workflow-id=<workflow-id> --instance-id=<instance-id>
+    ///
+    /// AUTHENTICATION:
+    ///   Requires either OAuth2 authentication (pup auth login) or API keys.
+    #[command(verbatim_doc_comment)]
+    Workflows {
+        #[command(subcommand)]
+        action: WorkflowActions,
     },
     /// Print version information
     Version,
@@ -4200,6 +4266,63 @@ enum AgentActions {
     Guide,
 }
 
+// ---- Runbooks ----
+#[derive(Subcommand)]
+enum RunbookActions {
+    /// List available runbooks
+    List {
+        #[arg(long, help = "Filter by tag (key:value, repeatable)", action = clap::ArgAction::Append)]
+        tag: Vec<String>,
+    },
+    /// Show runbook details and steps
+    Describe { name: String },
+    /// Execute a runbook
+    Run {
+        name: String,
+        #[arg(long, help = "Set a variable: KEY=VALUE", action = clap::ArgAction::Append)]
+        set: Vec<String>,
+    },
+    /// Validate a runbook without executing
+    Validate { name: String },
+    /// Import a runbook from a file path or URL
+    Import { source: String },
+}
+
+// ---- Workflows ----
+#[derive(Subcommand)]
+enum WorkflowActions {
+    /// Trigger a Datadog Workflow
+    Run {
+        #[arg(long, help = "Workflow ID (required)")]
+        id: String,
+        #[arg(long, help = "Input key=value pairs", action = clap::ArgAction::Append)]
+        input: Vec<String>,
+        #[arg(long, default_value_t = false, help = "Poll until workflow completes")]
+        watch: bool,
+    },
+    /// Manage workflow instances
+    Instances {
+        #[command(subcommand)]
+        action: WorkflowInstanceActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkflowInstanceActions {
+    /// List workflow instances
+    List {
+        #[arg(long, help = "Workflow ID (required)")]
+        workflow_id: String,
+    },
+    /// Get a specific workflow instance
+    Get {
+        #[arg(long, help = "Workflow ID (required)")]
+        workflow_id: String,
+        #[arg(long, help = "Instance ID (required)")]
+        instance_id: String,
+    },
+}
+
 // ---- Alias ----
 #[derive(Subcommand)]
 enum AliasActions {
@@ -6379,6 +6502,45 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     StaticAnalysisCoverageActions::Get { id } => {
                         commands::static_analysis::coverage_get(&cfg, &id).await?;
+                    }
+                },
+            }
+        }
+        // --- Runbooks ---
+        Commands::Runbooks { action } => match action {
+            RunbookActions::List { tag } => {
+                commands::runbooks::list(&cfg, tag)?;
+            }
+            RunbookActions::Describe { name } => {
+                commands::runbooks::describe(&cfg, &name)?;
+            }
+            RunbookActions::Run { name, set } => {
+                commands::runbooks::run(&cfg, &name, set, cfg.auto_approve).await?;
+            }
+            RunbookActions::Validate { name } => {
+                commands::runbooks::validate(&cfg, &name)?;
+            }
+            RunbookActions::Import { source } => {
+                commands::runbooks::import(&cfg, &source).await?;
+            }
+        },
+        // --- Workflows ---
+        Commands::Workflows { action } => {
+            cfg.validate_auth()?;
+            match action {
+                WorkflowActions::Run { id, input, watch } => {
+                    commands::workflows::run(&cfg, &id, input, watch).await?;
+                }
+                WorkflowActions::Instances { action } => match action {
+                    WorkflowInstanceActions::List { workflow_id } => {
+                        commands::workflows::instances_list(&cfg, &workflow_id).await?;
+                    }
+                    WorkflowInstanceActions::Get {
+                        workflow_id,
+                        instance_id,
+                    } => {
+                        commands::workflows::instances_get(&cfg, &workflow_id, &instance_id)
+                            .await?;
                     }
                 },
             }

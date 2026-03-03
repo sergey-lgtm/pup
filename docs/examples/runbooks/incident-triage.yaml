@@ -1,0 +1,59 @@
+name: incident-triage
+description: Automated incident triage — fetch incident details, search relevant logs, check monitors, optionally trigger mitigation workflow, and run shell diagnostics
+tags:
+  type: incident
+  team: oncall
+
+vars:
+  INCIDENT_ID:
+    description: Datadog incident ID to triage
+    required: true
+  SERVICE:
+    description: Primary service affected
+    required: true
+  LOOKBACK:
+    description: Log lookback window
+    default: 30m
+  MITIGATION_WORKFLOW_ID:
+    description: Datadog Workflow ID for auto-mitigation (optional)
+    required: false
+    default: ""
+
+steps:
+  - name: Fetch incident details
+    kind: pup
+    run: incidents get {{ INCIDENT_ID }}
+    capture: INCIDENT_DETAILS
+    on_failure: warn
+
+  - name: Search error logs for affected service
+    kind: pup
+    run: logs search --query="service:{{ SERVICE }} status:error" --from={{ LOOKBACK }} --limit=20
+
+  - name: Check monitors for service
+    kind: pup
+    run: monitors list --tags="service:{{ SERVICE }}" --limit=50
+
+  - name: Check SLO burn rate
+    kind: pup
+    run: slos list
+    on_failure: warn
+
+  - name: Trigger auto-mitigation workflow
+    kind: datadog-workflow
+    workflow_id: "{{ MITIGATION_WORKFLOW_ID }}"
+    inputs:
+      incident_id: "{{ INCIDENT_ID }}"
+      service: "{{ SERVICE }}"
+    optional: true
+    on_failure: warn
+
+  - name: Run shell diagnostics
+    kind: shell
+    run: echo "=== Quick DNS check ===" && nslookup "{{ SERVICE }}.internal" 2>/dev/null || echo "DNS not available"
+    optional: true
+
+  - name: Confirm triage complete
+    kind: confirm
+    message: "Triage of incident {{ INCIDENT_ID }} complete. Mark as stable and continue?"
+    when: always
