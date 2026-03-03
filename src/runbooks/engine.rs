@@ -9,9 +9,11 @@ use crate::config::Config;
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
-/// Current wall-clock time as HH:MM:SS.
+/// Current time as a full UTC datetime string.
 fn now_str() -> String {
-    chrono::Local::now().format("%H:%M:%S").to_string()
+    chrono::Utc::now()
+        .format("%Y-%m-%d %H:%M:%S UTC")
+        .to_string()
 }
 
 /// Human-readable elapsed time: "8ms", "1.2s", "2m 5s".
@@ -27,9 +29,6 @@ fn fmt_elapsed(d: Duration) -> String {
         format!("{m}m {s}s")
     }
 }
-
-/// A single horizontal rule at a fixed width.
-const RULE: &str = "──────────────────────────────────────────────────────────────────────";
 
 /// One-line preview of what a step will execute (after template rendering).
 fn step_preview(step: &Step, vars: &HashMap<String, String>) -> String {
@@ -86,17 +85,15 @@ pub async fn run(cfg: &Config, runbook: &Runbook, vars: HashMap<String, String>)
     }
 
     let runbook_start = Instant::now();
-    eprintln!("{RULE}");
     eprintln!(
-        " Runbook: {}  ·  {} steps  ·  started {}",
+        "runbook: {}  ({} steps)  {}",
         runbook.name,
         total,
         now_str()
     );
     if let Some(desc) = &runbook.description {
-        eprintln!(" {desc}");
+        eprintln!("  {desc}");
     }
-    eprintln!("{RULE}");
 
     let mut last_failed = false;
     let mut steps_ok: usize = 0;
@@ -122,7 +119,7 @@ pub async fn run(cfg: &Config, runbook: &Runbook, vars: HashMap<String, String>)
         let preview = step_preview(step, &step_vars);
         eprintln!();
         eprintln!(
-            "► Step {step_num}/{total}  ·  {}  ·  {}  [{}]",
+            "[{step_num}/{total}] {}  ({})  {}",
             step.name,
             step.kind,
             now_str()
@@ -130,7 +127,6 @@ pub async fn run(cfg: &Config, runbook: &Runbook, vars: HashMap<String, String>)
         if !preview.is_empty() {
             eprintln!("  {preview}");
         }
-        eprintln!();
 
         // ── when condition check ─────────────────────────────────────────────
         let when = step.when.as_deref().unwrap_or("on_success");
@@ -147,12 +143,11 @@ pub async fn run(cfg: &Config, runbook: &Runbook, vars: HashMap<String, String>)
             Ok(output) => {
                 // Print step output, labeled
                 if !output.trim().is_empty() {
-                    eprintln!("── stdout {}", &RULE[9..]);
+                    eprintln!("  stdout:");
                     print!("{}", output);
                     if !output.ends_with('\n') {
                         println!();
                     }
-                    eprintln!("{RULE}");
                 }
 
                 if let Some(capture_var) = &step.capture {
@@ -174,10 +169,9 @@ pub async fn run(cfg: &Config, runbook: &Runbook, vars: HashMap<String, String>)
                     continue;
                 }
 
-                // Show stderr content extracted from the error
-                eprintln!("── stderr {}", &RULE[9..]);
-                eprintln!("  {e}");
-                eprintln!("{RULE}");
+                // Show error
+                eprintln!("  stderr:");
+                eprintln!("    {e}");
 
                 match on_failure {
                     "warn" => {
@@ -202,20 +196,18 @@ pub async fn run(cfg: &Config, runbook: &Runbook, vars: HashMap<String, String>)
 
     // ── Runbook summary ──────────────────────────────────────────────────────
     let total_elapsed = runbook_start.elapsed();
-    eprintln!();
-    eprintln!("{RULE}");
     let status = if last_failed || steps_ok < total {
-        "⚠ completed with warnings"
+        "⚠ done with warnings"
     } else {
-        "✓ complete"
+        "✓ done"
     };
+    eprintln!();
     eprintln!(
-        " Runbook {status}: {}  ·  {steps_ok}/{total} steps succeeded  ·  {}  ·  {}",
+        "{status}  {}  {steps_ok}/{total} steps  {}  {}",
         runbook.name,
         fmt_elapsed(total_elapsed),
         now_str()
     );
-    eprintln!("{RULE}");
     Ok(())
 }
 
@@ -315,12 +307,11 @@ async fn execute_shell(step: &Step, vars: &HashMap<String, String>) -> Result<St
             // Always surface stderr if non-empty (warnings, notices, etc.)
             let stderr = String::from_utf8_lossy(&out.stderr);
             if !stderr.trim().is_empty() {
-                eprintln!("── stderr {}", &RULE[9..]);
+                eprintln!("  stderr:");
                 eprint!("{}", stderr);
                 if !stderr.ends_with('\n') {
                     eprintln!();
                 }
-                eprintln!("{RULE}");
             }
 
             if !out.status.success() {
