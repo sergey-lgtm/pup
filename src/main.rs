@@ -5,6 +5,7 @@ mod client;
 mod commands;
 mod config;
 mod formatter;
+mod skills;
 mod useragent;
 mod util;
 mod version;
@@ -103,6 +104,28 @@ enum Commands {
     Alias {
         #[command(subcommand)]
         action: AliasActions,
+    },
+    /// Manage agent skills for AI coding assistants
+    ///
+    /// Install structured workflow guides, domain references, and specialized
+    /// agents that teach AI coding assistants how to compose pup commands.
+    ///
+    /// COMMANDS:
+    ///   list      List available skills and agents
+    ///   install   Install skills for the detected AI coding assistant
+    ///   path      Show where skills would be installed
+    ///
+    /// EXAMPLES:
+    ///   pup skills list
+    ///   pup skills install
+    ///   pup skills install dd-pup
+    ///   pup skills install --type=agent
+    ///   pup skills install --target-agent=cursor
+    ///   pup skills path
+    #[command(verbatim_doc_comment)]
+    Skills {
+        #[command(subcommand)]
+        action: SkillsActions,
     },
     /// Manage API keys
     ///
@@ -4219,6 +4242,37 @@ enum AliasActions {
     },
 }
 
+// ---- Skills ----
+#[derive(Subcommand)]
+enum SkillsActions {
+    /// List available skills and agents
+    List {
+        /// Filter by type: skill, agent
+        #[arg(long = "type", name = "type")]
+        entry_type: Option<String>,
+    },
+    /// Install skills for the detected AI coding assistant
+    Install {
+        /// Install a specific skill or agent by name
+        name: Option<String>,
+        /// Override detected AI agent (claude-code, cursor, codex, windsurf, gemini-code)
+        #[arg(long = "target-agent")]
+        target_agent: Option<String>,
+        /// Override install directory
+        #[arg(long)]
+        dir: Option<String>,
+        /// Filter by type: skill, agent
+        #[arg(long = "type", name = "type")]
+        entry_type: Option<String>,
+    },
+    /// Show where skills would be installed
+    Path {
+        /// Override detected AI agent
+        #[arg(long = "target-agent")]
+        target_agent: Option<String>,
+    },
+}
+
 // ---- Product Analytics ----
 #[derive(Subcommand)]
 enum ProductAnalyticsActions {
@@ -4956,7 +5010,10 @@ async fn main_inner() -> anyhow::Result<()> {
     }
     if cfg.read_only {
         let top = get_top_level_subcommand_name(&matches);
-        let is_local_only = matches!(top.as_deref(), Some("auth") | Some("alias"));
+        let is_local_only = matches!(
+            top.as_deref(),
+            Some("auth") | Some("alias") | Some("skills")
+        );
         if !is_local_only {
             if let Some(leaf) = get_leaf_subcommand_name(&matches) {
                 if is_write_command_name(&leaf) {
@@ -6362,6 +6419,17 @@ async fn main_inner() -> anyhow::Result<()> {
             AliasActions::Set { name, command } => commands::alias::set(name, command)?,
             AliasActions::Delete { names } => commands::alias::delete(names)?,
             AliasActions::Import { file } => commands::alias::import(&file)?,
+        },
+        // --- Skills ---
+        Commands::Skills { action } => match action {
+            SkillsActions::List { entry_type } => commands::skills::list(&cfg, entry_type)?,
+            SkillsActions::Install {
+                name,
+                target_agent,
+                dir,
+                entry_type,
+            } => commands::skills::install(&cfg, name, target_agent, dir, entry_type)?,
+            SkillsActions::Path { target_agent } => commands::skills::path(target_agent)?,
         },
         // --- Product Analytics ---
         Commands::ProductAnalytics { action } => {
