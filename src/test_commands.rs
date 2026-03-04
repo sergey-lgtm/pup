@@ -371,6 +371,7 @@ async fn test_logs_search() {
         "1h".into(),
         "now".into(),
         10,
+        "-timestamp".into(),
         None,
     )
     .await;
@@ -404,6 +405,7 @@ async fn test_logs_search_with_oauth() {
         "1h".into(),
         "now".into(),
         10,
+        "-timestamp".into(),
         None,
     )
     .await;
@@ -437,6 +439,7 @@ async fn test_logs_search_with_flex_storage() {
         "1h".into(),
         "now".into(),
         10,
+        "-timestamp".into(),
         Some("flex".into()),
     )
     .await;
@@ -461,6 +464,7 @@ async fn test_logs_search_with_online_archives_storage() {
         "1h".into(),
         "now".into(),
         10,
+        "-timestamp".into(),
         Some("online-archives".into()),
     )
     .await;
@@ -484,6 +488,7 @@ async fn test_logs_search_with_invalid_storage_tier() {
         "1h".into(),
         "now".into(),
         10,
+        "-timestamp".into(),
         Some("invalid-tier".into()),
     )
     .await;

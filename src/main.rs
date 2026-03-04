@@ -5062,32 +5062,32 @@ async fn main_inner() -> anyhow::Result<()> {
                     from,
                     to,
                     limit,
-                    sort: _,
+                    sort,
                     index: _,
                     storage,
                 } => {
-                    commands::logs::search(&cfg, query, from, to, limit, storage).await?;
+                    commands::logs::search(&cfg, query, from, to, limit, sort, storage).await?;
                 }
                 LogActions::List {
                     query,
                     from,
                     to,
                     limit,
-                    sort: _,
+                    sort,
                     storage,
                 } => {
-                    commands::logs::list(&cfg, query, from, to, limit, storage).await?;
+                    commands::logs::list(&cfg, query, from, to, limit, sort, storage).await?;
                 }
                 LogActions::Query {
                     query,
                     from,
                     to,
                     limit,
-                    sort: _,
+                    sort,
                     storage,
                     timezone: _,
                 } => {
-                    commands::logs::query(&cfg, query, from, to, limit, storage).await?;
+                    commands::logs::query(&cfg, query, from, to, limit, sort, storage).await?;
                 }
                 LogActions::Aggregate {
                     query,

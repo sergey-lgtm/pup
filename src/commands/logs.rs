@@ -38,12 +38,21 @@ fn parse_storage_tier(storage: Option<String>) -> Result<Option<LogsStorageTier>
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn parse_logs_sort(sort: &str) -> LogsSort {
+    match sort {
+        "timestamp" | "asc" | "+timestamp" => LogsSort::TIMESTAMP_ASCENDING,
+        _ => LogsSort::TIMESTAMP_DESCENDING,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn search(
     cfg: &Config,
     query: String,
     from: String,
     to: String,
     limit: i32,
+    sort: String,
     storage: Option<String>,
 ) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
@@ -68,7 +77,7 @@ pub async fn search(
     let body = LogsListRequest::new()
         .filter(filter)
         .page(LogsListRequestPage::new().limit(limit))
-        .sort(LogsSort::TIMESTAMP_DESCENDING);
+        .sort(parse_logs_sort(&sort));
 
     let params = ListLogsOptionalParams::default().body(body);
 
@@ -107,6 +116,7 @@ pub async fn search(
     from: String,
     to: String,
     limit: i32,
+    sort: String,
     storage: Option<String>,
 ) -> Result<()> {
     let from_ms = util::parse_time_to_unix_millis(&from)?;
@@ -119,10 +129,14 @@ pub async fn search(
     if let Some(tier) = storage {
         filter["storage_tier"] = serde_json::Value::String(tier);
     }
+    let sort_value = match sort.as_str() {
+        "timestamp" | "asc" | "+timestamp" => "timestamp",
+        _ => "-timestamp",
+    };
     let body = serde_json::json!({
         "filter": filter,
         "page": { "limit": limit },
-        "sort": "-timestamp"
+        "sort": sort_value
     });
     let data = crate::api::post(cfg, "/api/v2/logs/events/search", &body).await?;
     crate::formatter::output(cfg, &data)
@@ -135,9 +149,10 @@ pub async fn list(
     from: String,
     to: String,
     limit: i32,
+    sort: String,
     storage: Option<String>,
 ) -> Result<()> {
-    search(cfg, query, from, to, limit, storage).await
+    search(cfg, query, from, to, limit, sort, storage).await
 }
 
 /// Alias for `search` with the same interface.
@@ -147,9 +162,10 @@ pub async fn query(
     from: String,
     to: String,
     limit: i32,
+    sort: String,
     storage: Option<String>,
 ) -> Result<()> {
-    search(cfg, query, from, to, limit, storage).await
+    search(cfg, query, from, to, limit, sort, storage).await
 }
 
 #[cfg(not(target_arch = "wasm32"))]
