@@ -440,6 +440,35 @@ wasmtime run --env DD_ACCESS_TOKEN="your-token" target/wasm32-wasip2/release/pup
 wasmtime run --env DD_API_KEY="key" --env DD_APP_KEY="key" target/wasm32-wasip2/release/pup.wasm -- --help
 ```
 
+## Agent Skills
+
+Pup ships 7 skills and 48 domain agents embedded in the binary, installable to any AI coding assistant.
+
+```bash
+# Install all skills and agents for your AI assistant
+pup skills install
+
+# Install for a specific tool
+pup skills install --target-agent=claude-code
+pup skills install --target-agent=cursor
+
+# List available skills and agents
+pup skills list
+pup skills list --type=skill
+pup skills list --type=agent
+
+# Install a specific skill
+pup skills install dd-monitors
+```
+
+For Claude Code, skills install to `.claude/skills/` and agents install to `.claude/agents/` (native subagent format). For other tools, everything installs as `SKILL.md` in the tool's skills directory.
+
+Pup is also available as a **Claude Code plugin marketplace**:
+
+```
+/plugin marketplace add datadog-labs/pup
+```
+
 ## Development
 
 ```bash

@@ -61,8 +61,9 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | code-coverage | branch-summary, commit-summary | src/commands/code_coverage.rs | ✅ |
 | hamr | connections (get, create) | src/commands/hamr.rs | ✅ |
 | fleet | agents (list, get, versions), deployments (list, get, configure, upgrade, cancel), schedules (list, get, create, update, delete, trigger) | src/commands/fleet.rs | ✅ |
+| skills | list, install, path | src/commands/skills.rs | ✅ |
 
-**Summary:** 38 working, 0 API-blocked, 2 placeholders
+**Summary:** 39 working, 0 API-blocked, 2 placeholders
 
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
 
