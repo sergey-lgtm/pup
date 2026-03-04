@@ -35,6 +35,7 @@ pub mod rum;
 pub mod scorecards;
 pub mod security;
 pub mod service_catalog;
+pub mod skills;
 pub mod slos;
 pub mod static_analysis;
 pub mod status_pages;
