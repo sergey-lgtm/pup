@@ -187,7 +187,8 @@ static UNSTABLE_OPS: &[&str] = &[
     "v2.list_findings",
     // SLO Status (1)
     "v2.get_slo_status",
-    // Flaky Tests (1)
+    // Flaky Tests (2)
+    "v2.search_flaky_tests",
     "v2.update_flaky_tests",
 ];
 
@@ -537,7 +538,7 @@ mod tests {
 
     #[test]
     fn test_unstable_ops_count() {
-        assert_eq!(UNSTABLE_OPS.len(), 64);
+        assert_eq!(UNSTABLE_OPS.len(), 65);
     }
 
     #[test]

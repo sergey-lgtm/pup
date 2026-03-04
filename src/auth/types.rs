@@ -133,6 +133,7 @@ pub fn default_scopes() -> Vec<&'static str> {
         "synthetics_write",
         "synthetics_private_location_read",
         // Teams
+        "teams_manage",
         "teams_read",
         // Timeseries
         "timeseries_query",
@@ -186,7 +187,7 @@ mod tests {
     #[test]
     fn test_default_scopes() {
         let scopes = default_scopes();
-        assert_eq!(scopes.len(), 69);
+        assert_eq!(scopes.len(), 70);
         assert!(scopes.contains(&"dashboards_read"));
         assert!(scopes.contains(&"monitors_read"));
         assert!(scopes.contains(&"logs_read_data"));
