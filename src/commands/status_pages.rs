@@ -11,7 +11,8 @@ use datadog_api_client::datadogV2::api_status_pages::{
     GetDegradationOptionalParams, GetMaintenanceOptionalParams, GetStatusPageOptionalParams,
     ListComponentsOptionalParams, ListDegradationsOptionalParams, ListMaintenancesOptionalParams,
     ListStatusPagesOptionalParams, StatusPagesAPI, UpdateComponentOptionalParams,
-    UpdateDegradationOptionalParams, UpdateMaintenanceOptionalParams, UpdateStatusPageOptionalParams,
+    UpdateDegradationOptionalParams, UpdateMaintenanceOptionalParams,
+    UpdateStatusPageOptionalParams,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV2::model::{
@@ -439,7 +440,11 @@ pub async fn maintenances_get(cfg: &Config, page_id: &str, maintenance_id: &str)
     let page_uuid = util::parse_uuid(page_id, "page")?;
     let maintenance_uuid = util::parse_uuid(maintenance_id, "maintenance")?;
     let resp = api
-        .get_maintenance(page_uuid, maintenance_uuid, GetMaintenanceOptionalParams::default())
+        .get_maintenance(
+            page_uuid,
+            maintenance_uuid,
+            GetMaintenanceOptionalParams::default(),
+        )
         .await
         .map_err(|e| anyhow::anyhow!("failed to get maintenance: {e:?}"))?;
     formatter::output(cfg, &resp)

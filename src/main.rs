@@ -2529,7 +2529,10 @@ enum SecurityRuleActions {
     List {
         #[arg(long, help = "Filter query")]
         filter: Option<String>,
-        #[arg(long, help = "Sort order (name, -name, creation_date, -creation_date, update_date, -update_date, enabled, -enabled, type, -type, highest_severity, -highest_severity, source, -source)")]
+        #[arg(
+            long,
+            help = "Sort order (name, -name, creation_date, -creation_date, update_date, -update_date, enabled, -enabled, type, -type, highest_severity, -highest_severity, source, -source)"
+        )]
         sort: Option<String>,
     },
     /// Get rule details
@@ -2593,7 +2596,10 @@ enum SecurityRiskScoreActions {
 enum SecuritySuppressionActions {
     /// List suppression rules
     List {
-        #[arg(long, help = "Sort order (name, -name, start_date, -start_date, expiration_date, -expiration_date, update_date, -update_date, -creation_date, enabled, -enabled)")]
+        #[arg(
+            long,
+            help = "Sort order (name, -name, start_date, -start_date, expiration_date, -expiration_date, update_date, -update_date, -creation_date, enabled, -enabled)"
+        )]
         sort: Option<String>,
     },
     /// Get suppression rule details
@@ -2742,10 +2748,7 @@ enum GoogleChatHandleActions {
     /// List organization handles
     List { org_id: String },
     /// Get an organization handle
-    Get {
-        org_id: String,
-        handle_id: String,
-    },
+    Get { org_id: String, handle_id: String },
     /// Create an organization handle
     Create {
         org_id: String,
@@ -2760,10 +2763,7 @@ enum GoogleChatHandleActions {
         file: String,
     },
     /// Delete an organization handle
-    Delete {
-        org_id: String,
-        handle_id: String,
-    },
+    Delete { org_id: String, handle_id: String },
 }
 
 // ---- Organizations ----
@@ -6695,10 +6695,8 @@ async fn main_inner() -> anyhow::Result<()> {
                             handle_id,
                             file,
                         } => {
-                            commands::google_chat::handles_update(
-                                &cfg, &org_id, &handle_id, &file,
-                            )
-                            .await?;
+                            commands::google_chat::handles_update(&cfg, &org_id, &handle_id, &file)
+                                .await?;
                         }
                         GoogleChatHandleActions::Delete { org_id, handle_id } => {
                             commands::google_chat::handles_delete(&cfg, &org_id, &handle_id)
@@ -6838,7 +6836,9 @@ async fn main_inner() -> anyhow::Result<()> {
         }
         // --- Network (placeholder) ---
         Commands::Network { action } => match action {
-            NetworkActions::List => anyhow::bail!("network commands are not yet implemented (API endpoints pending)"),
+            NetworkActions::List => {
+                anyhow::bail!("network commands are not yet implemented (API endpoints pending)")
+            }
             NetworkActions::Flows { action } => match action {
                 NetworkFlowActions::List => {
                     cfg.validate_auth()?;
