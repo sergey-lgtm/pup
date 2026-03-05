@@ -1,8 +1,17 @@
 {
   "data": [
-    "<empty_list>"
+    "<list>",
+    {
+      "attributes": {
+        "*": "<...>"
+      },
+      "id": "str",
+      "type": "str"
+    }
   ],
   "meta": {
-    "*": "str"
+    "*": {
+      "total_filtered_count": "int"
+    }
   }
 }

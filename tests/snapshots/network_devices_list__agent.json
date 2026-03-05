@@ -1,6 +1,13 @@
 {
   "data": [
-    "<empty_list>"
+    "<list>",
+    {
+      "attributes": {
+        "*": "<...>"
+      },
+      "id": "str",
+      "type": "str"
+    }
   ],
   "status": "str"
 }
