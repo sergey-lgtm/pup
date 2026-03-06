@@ -38,9 +38,12 @@ fn make_api(cfg: &Config) -> CaseManagementAPI {
 // ---------------------------------------------------------------------------
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn search(cfg: &Config, _query: Option<String>, page_size: i64) -> Result<()> {
+pub async fn search(cfg: &Config, query: Option<String>, page_size: i64) -> Result<()> {
     let api = make_api(cfg);
-    let params = SearchCasesOptionalParams::default().page_size(page_size);
+    let mut params = SearchCasesOptionalParams::default().page_size(page_size);
+    if let Some(q) = query {
+        params = params.filter(q);
+    }
     let resp = api
         .search_cases(params)
         .await
@@ -49,8 +52,11 @@ pub async fn search(cfg: &Config, _query: Option<String>, page_size: i64) -> Res
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn search(cfg: &Config, _query: Option<String>, page_size: i64) -> Result<()> {
-    let q = vec![("page[size]", page_size.to_string())];
+pub async fn search(cfg: &Config, query: Option<String>, page_size: i64) -> Result<()> {
+    let mut q = vec![("page[size]", page_size.to_string())];
+    if let Some(filter) = query {
+        q.push(("filter[query]", filter));
+    }
     let data = crate::api::get(cfg, "/api/v2/cases", &q).await?;
     crate::formatter::output(cfg, &data)
 }
