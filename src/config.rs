@@ -1,6 +1,8 @@
 use anyhow::{bail, Result};
 #[cfg(not(feature = "browser"))]
 use serde::Deserialize;
+#[cfg(not(feature = "browser"))]
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Runtime configuration with precedence: flag > env > file > default.
@@ -45,6 +47,14 @@ impl std::str::FromStr for OutputFormat {
     }
 }
 
+/// Per-profile settings in the config file.
+#[cfg(not(feature = "browser"))]
+#[derive(Deserialize, Default)]
+struct ProfileConfig {
+    /// Comma-separated OAuth scopes to request when logging in with this profile.
+    scopes: Option<String>,
+}
+
 /// Config file structure (~/.config/pup/config.yaml)
 #[cfg(not(feature = "browser"))]
 #[derive(Deserialize, Default)]
@@ -57,6 +67,10 @@ struct FileConfig {
     output: Option<String>,
     auto_approve: Option<bool>,
     read_only: Option<bool>,
+    /// Default OAuth scopes to request on login (comma-separated).
+    scopes: Option<String>,
+    /// Per-org profile settings. Profile key matches the --org value used at login.
+    profiles: Option<HashMap<String, ProfileConfig>>,
 }
 
 impl Config {
@@ -209,6 +223,44 @@ fn load_config_file() -> Option<FileConfig> {
     let path = config_dir()?.join("config.yaml");
     let contents = std::fs::read_to_string(path).ok()?;
     serde_yaml::from_str(&contents).ok()
+}
+
+/// Load configured login scopes for a given org profile from the config file.
+/// Profile key matches the --org value; falls back to top-level scopes field.
+/// Returns None if no scopes are configured (caller uses defaults).
+#[cfg(not(feature = "browser"))]
+pub fn load_configured_scopes(org: Option<&str>) -> Option<Vec<String>> {
+    let file_cfg = load_config_file()?;
+
+    // Check per-org profile first
+    if let (Some(org_name), Some(profiles)) = (org, &file_cfg.profiles) {
+        if let Some(profile) = profiles.get(org_name) {
+            if let Some(scopes_str) = &profile.scopes {
+                let scopes = parse_scopes(scopes_str);
+                if !scopes.is_empty() {
+                    return Some(scopes);
+                }
+            }
+        }
+    }
+
+    // Fall back to top-level scopes
+    let scopes = parse_scopes(file_cfg.scopes.as_deref()?);
+    if scopes.is_empty() {
+        None
+    } else {
+        Some(scopes)
+    }
+}
+
+/// Parse a comma-separated scope string into a Vec of trimmed, non-empty strings.
+#[cfg(not(feature = "browser"))]
+pub fn parse_scopes(s: &str) -> Vec<String> {
+    s.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 /// Try to load a valid (non-expired) access token from keychain/file storage.
@@ -518,5 +570,60 @@ mod tests {
 
         std::env::remove_var("DD_ACCESS_TOKEN");
         std::env::remove_var("PUP_CONFIG_DIR");
+    }
+
+    #[test]
+    fn test_parse_scopes_basic() {
+        assert_eq!(
+            parse_scopes("dashboards_read,metrics_read"),
+            vec!["dashboards_read", "metrics_read"]
+        );
+    }
+
+    #[test]
+    fn test_parse_scopes_with_spaces() {
+        assert_eq!(
+            parse_scopes(" dashboards_read , metrics_read "),
+            vec!["dashboards_read", "metrics_read"]
+        );
+    }
+
+    #[test]
+    fn test_parse_scopes_empty() {
+        assert!(parse_scopes("").is_empty());
+        assert!(parse_scopes("  ").is_empty());
+    }
+
+    #[test]
+    fn test_parse_scopes_single() {
+        assert_eq!(parse_scopes("org_management"), vec!["org_management"]);
+    }
+
+    #[test]
+    fn test_file_config_profiles_scopes() {
+        let yaml = r#"
+profiles:
+  my-org:
+    scopes: teams_manage,org_management
+  read-only-org:
+    scopes: dashboards_read,metrics_read
+"#;
+        let fc: FileConfig = serde_yaml::from_str(yaml).unwrap();
+        let profiles = fc.profiles.unwrap();
+        assert_eq!(
+            profiles["my-org"].scopes.as_deref(),
+            Some("teams_manage,org_management")
+        );
+        assert_eq!(
+            profiles["read-only-org"].scopes.as_deref(),
+            Some("dashboards_read,metrics_read")
+        );
+    }
+
+    #[test]
+    fn test_file_config_top_level_scopes() {
+        let yaml = "scopes: dashboards_read,monitors_read\n";
+        let fc: FileConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(fc.scopes.as_deref(), Some("dashboards_read,monitors_read"));
     }
 }

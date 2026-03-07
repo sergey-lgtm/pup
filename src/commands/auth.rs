@@ -15,8 +15,8 @@ where
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn login(cfg: &Config) -> Result<()> {
-    use crate::auth::{dcr, pkce, types};
+pub async fn login(cfg: &Config, scopes: Vec<String>) -> Result<()> {
+    use crate::auth::{dcr, pkce};
 
     let site = &cfg.site;
     let org = cfg.org.as_deref();
@@ -27,6 +27,13 @@ pub async fn login(cfg: &Config) -> Result<()> {
     let org_label = org.map(|o| format!(" (org: {o})")).unwrap_or_default();
     eprintln!("\n🔐 Starting OAuth2 login for site: {site}{org_label}\n");
     eprintln!("📡 Callback server started on: {redirect_uri}");
+
+    let scope_strs: Vec<&str> = scopes.iter().map(String::as_str).collect();
+    if scopes.len() > 10 {
+        eprintln!("🔑 Requesting {} scope(s) (use --scopes to customize)", scopes.len());
+    } else {
+        eprintln!("🔑 Requesting {} scope(s): {}", scopes.len(), scopes.join(", "));
+    }
 
     // 2. Load existing client credentials (lock released before any await)
     // Client credentials are site-scoped (DCR is per-site, shared across orgs)
@@ -40,8 +47,7 @@ pub async fn login(cfg: &Config) -> Result<()> {
         None => {
             eprintln!("📝 Registering new OAuth2 client...");
             let dcr_client = dcr::DcrClient::new(site);
-            let scopes = types::default_scopes();
-            let creds = dcr_client.register(&redirect_uri, &scopes).await?;
+            let creds = dcr_client.register(&redirect_uri, &scope_strs).await?;
             with_storage(|store| store.save_client_credentials(site, &creds))?;
             eprintln!("✓ Registered client: {}", creds.client_id);
             creds
@@ -54,13 +60,12 @@ pub async fn login(cfg: &Config) -> Result<()> {
 
     // 4. Build authorization URL
     let dcr_client = dcr::DcrClient::new(site);
-    let scopes = types::default_scopes();
     let auth_url = dcr_client.build_authorization_url(
         &creds.client_id,
         &redirect_uri,
         &state,
         &challenge,
-        &scopes,
+        &scope_strs,
     );
 
     // 5. Open browser
@@ -109,7 +114,7 @@ pub async fn login(cfg: &Config) -> Result<()> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn login(_cfg: &Config) -> Result<()> {
+pub async fn login(_cfg: &Config, _scopes: Vec<String>) -> Result<()> {
     bail!(
         "OAuth login is not available in WASM builds.\n\
          Use DD_ACCESS_TOKEN env var for bearer token auth,\n\
