@@ -39,6 +39,60 @@ pub struct ClientCredentials {
     pub site: String,
 }
 
+/// All known valid OAuth scopes for validation.
+pub fn all_known_scopes() -> Vec<&'static str> {
+    default_scopes()
+}
+
+/// Read-only OAuth scopes for use with --read-only flag.
+/// Excludes write, manage, and org-level administrative scopes.
+pub fn read_only_scopes() -> Vec<&'static str> {
+    vec![
+        "apm_read",
+        "apm_service_catalog_read",
+        "audit_logs_read",
+        "azure_configuration_read",
+        "bits_investigations_read",
+        "cases_read",
+        "ci_visibility_read",
+        "code_coverage_read",
+        "test_optimization_read",
+        "dashboards_read",
+        "data_scanner_read",
+        "error_tracking_read",
+        "events_read",
+        "disaster_recovery_status_read",
+        "hosts_read",
+        "incident_read",
+        "incident_notification_settings_read",
+        "incident_settings_read",
+        "integrations_read",
+        "logs_read_archives",
+        "logs_read_config",
+        "logs_read_data",
+        "logs_read_index_data",
+        "metrics_read",
+        "monitors_read",
+        "notebooks_read",
+        "oci_configuration_read",
+        "rum_apps_read",
+        "rum_retention_filters_read",
+        "rum_session_replay_read",
+        "security_monitoring_filters_read",
+        "security_monitoring_findings_read",
+        "security_monitoring_rules_read",
+        "security_monitoring_signals_read",
+        "slos_read",
+        "status_pages_settings_read",
+        "synthetics_read",
+        "synthetics_private_location_read",
+        "teams_read",
+        "timeseries_query",
+        "usage_read",
+        "user_access_read",
+    ]
+}
+
 /// Default OAuth scopes requested during login.
 pub fn default_scopes() -> Vec<&'static str> {
     vec![
@@ -201,6 +255,38 @@ mod tests {
         assert!(scopes.contains(&"teams_read"));
         assert!(scopes.contains(&"apm_service_catalog_read"));
         assert!(scopes.contains(&"status_pages_settings_read"));
+    }
+
+    #[test]
+    fn test_read_only_scopes_no_write_or_manage() {
+        let ro = read_only_scopes();
+        for scope in &ro {
+            assert!(
+                !scope.contains("write") && !scope.contains("manage") && *scope != "org_management",
+                "read_only_scopes should not contain write/manage scope: {scope}"
+            );
+        }
+        assert!(ro.contains(&"dashboards_read"));
+        assert!(ro.contains(&"monitors_read"));
+        assert!(!ro.contains(&"org_management"));
+        assert!(!ro.contains(&"teams_manage"));
+        assert!(!ro.contains(&"monitors_write"));
+    }
+
+    #[test]
+    fn test_read_only_scopes_subset_of_default() {
+        let default: std::collections::HashSet<&str> = default_scopes().into_iter().collect();
+        for scope in read_only_scopes() {
+            assert!(
+                default.contains(scope),
+                "read_only scope not in default_scopes: {scope}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_known_scopes_matches_default() {
+        assert_eq!(all_known_scopes(), default_scopes());
     }
 
     #[test]

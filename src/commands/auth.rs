@@ -15,8 +15,8 @@ where
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn login(cfg: &Config) -> Result<()> {
-    use crate::auth::{dcr, pkce, types};
+pub async fn login(cfg: &Config, scopes: Vec<String>) -> Result<()> {
+    use crate::auth::{dcr, pkce};
 
     let site = &cfg.site;
     let org = cfg.org.as_deref();
@@ -27,6 +27,20 @@ pub async fn login(cfg: &Config) -> Result<()> {
     let org_label = org.map(|o| format!(" (org: {o})")).unwrap_or_default();
     eprintln!("\n🔐 Starting OAuth2 login for site: {site}{org_label}\n");
     eprintln!("📡 Callback server started on: {redirect_uri}");
+
+    let scope_strs: Vec<&str> = scopes.iter().map(String::as_str).collect();
+    if scopes.len() > 10 {
+        eprintln!(
+            "🔑 Requesting {} scope(s) (use --scopes to customize)",
+            scopes.len()
+        );
+    } else {
+        eprintln!(
+            "🔑 Requesting {} scope(s): {}",
+            scopes.len(),
+            scopes.join(", ")
+        );
+    }
 
     // 2. Load existing client credentials (lock released before any await)
     // Client credentials are site-scoped (DCR is per-site, shared across orgs)
@@ -40,8 +54,7 @@ pub async fn login(cfg: &Config) -> Result<()> {
         None => {
             eprintln!("📝 Registering new OAuth2 client...");
             let dcr_client = dcr::DcrClient::new(site);
-            let scopes = types::default_scopes();
-            let creds = dcr_client.register(&redirect_uri, &scopes).await?;
+            let creds = dcr_client.register(&redirect_uri, &scope_strs).await?;
             with_storage(|store| store.save_client_credentials(site, &creds))?;
             eprintln!("✓ Registered client: {}", creds.client_id);
             creds
@@ -54,13 +67,12 @@ pub async fn login(cfg: &Config) -> Result<()> {
 
     // 4. Build authorization URL
     let dcr_client = dcr::DcrClient::new(site);
-    let scopes = types::default_scopes();
     let auth_url = dcr_client.build_authorization_url(
         &creds.client_id,
         &redirect_uri,
         &state,
         &challenge,
-        &scopes,
+        &scope_strs,
     );
 
     // 5. Open browser
@@ -109,7 +121,7 @@ pub async fn login(cfg: &Config) -> Result<()> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn login(_cfg: &Config) -> Result<()> {
+pub async fn login(_cfg: &Config, _scopes: Vec<String>) -> Result<()> {
     bail!(
         "OAuth login is not available in WASM builds.\n\
          Use DD_ACCESS_TOKEN env var for bearer token auth,\n\
@@ -187,11 +199,18 @@ pub fn status(cfg: &Config) -> Result<()> {
                     .map(|dt| dt.with_timezone(&chrono::Local).to_rfc3339())
                     .unwrap_or_default();
 
+                let scopes: Vec<&str> = tokens
+                    .scope
+                    .split_whitespace()
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
                 let json = serde_json::json!({
                     "authenticated": true,
                     "expires_at": expires_at,
                     "has_refresh": !tokens.refresh_token.is_empty(),
                     "org": org,
+                    "scopes": scopes,
                     "site": site,
                     "status": status,
                     "token_type": tokens.token_type,
@@ -292,11 +311,53 @@ pub async fn refresh(_cfg: &Config) -> Result<()> {
     )
 }
 
-/// List all stored org sessions from the session registry.
+/// List all stored org sessions from the session registry, enriched with token status.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn list(cfg: &Config) -> Result<()> {
     let sessions = storage::list_sessions()?;
-    crate::formatter::output(cfg, &sessions)
+
+    let enriched: Vec<serde_json::Value> = sessions
+        .into_iter()
+        .map(|s| {
+            let tokens = with_storage(|store| store.load_tokens(&s.site, s.org.as_deref()))
+                .ok()
+                .flatten();
+
+            match tokens {
+                Some(t) => {
+                    let expires_at_ts = t.issued_at + t.expires_in;
+                    let is_expired = t.is_expired();
+                    let status = if is_expired { "expired" } else { "valid" };
+                    let expires_at = chrono::DateTime::from_timestamp(expires_at_ts, 0)
+                        .map(|dt| dt.with_timezone(&chrono::Local).to_rfc3339())
+                        .unwrap_or_default();
+                    let scopes: Vec<&str> = t
+                        .scope
+                        .split_whitespace()
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    serde_json::json!({
+                        "expires_at": expires_at,
+                        "has_refresh": !t.refresh_token.is_empty(),
+                        "org": s.org,
+                        "scopes": scopes,
+                        "site": s.site,
+                        "status": status,
+                    })
+                }
+                None => serde_json::json!({
+                    "expires_at": null,
+                    "has_refresh": false,
+                    "org": s.org,
+                    "scopes": [],
+                    "site": s.site,
+                    "status": "no token",
+                }),
+            }
+        })
+        .collect();
+
+    crate::formatter::output(cfg, &enriched)
 }
 
 #[cfg(target_arch = "wasm32")]

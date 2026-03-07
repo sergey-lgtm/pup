@@ -4735,7 +4735,16 @@ enum StaticAnalysisCoverageActions {
 #[derive(Subcommand)]
 enum AuthActions {
     /// Login via OAuth2
-    Login,
+    Login {
+        /// Comma-separated OAuth scopes to request (e.g. dashboards_read,metrics_read).
+        /// Overrides profile and config file scopes. Unknown scopes are skipped with a warning.
+        #[arg(long, value_name = "SCOPES")]
+        scopes: Option<String>,
+        /// Request only read-only scopes (excludes write, manage, and org-level scopes).
+        /// Shorthand: --ro
+        #[arg(long, alias = "ro", visible_alias = "ro")]
+        read_only: bool,
+    },
     /// Logout and clear tokens
     Logout,
     /// Check authentication status
@@ -5261,6 +5270,70 @@ pub(crate) fn get_leaf_subcommand_name(matches: &clap::ArgMatches) -> Option<Str
 
 pub(crate) fn get_top_level_subcommand_name(matches: &clap::ArgMatches) -> Option<String> {
     matches.subcommand().map(|(name, _)| name.to_string())
+}
+
+/// Resolve OAuth scopes for `pup auth login`.
+///
+/// Priority: CLI --scopes > config profile scopes > config top-level scopes > defaults.
+/// Unknown scopes (not in the known list) are warned and excluded.
+/// In --read-only mode, defaults/profile scopes are filtered to read-only-safe scopes;
+/// explicitly-provided --scopes are passed through as-is (user intent is explicit).
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_login_scopes(
+    cli_scopes: Option<&str>,
+    org: Option<&str>,
+    read_only: bool,
+) -> Vec<String> {
+    use crate::auth::types::{all_known_scopes, default_scopes, read_only_scopes};
+
+    if let Some(raw) = cli_scopes {
+        // User explicitly specified scopes — validate against known list, warn on unknowns
+        let known: std::collections::HashSet<&str> = all_known_scopes().into_iter().collect();
+        let mut result = Vec::new();
+        for scope in crate::config::parse_scopes(raw) {
+            if known.contains(scope.as_str()) {
+                result.push(scope);
+            } else {
+                eprintln!("⚠️  Unknown scope ignored: {scope}");
+            }
+        }
+        return result;
+    }
+
+    // Load from config file (per-org profile, then top-level scopes)
+    if let Some(configured) = crate::config::load_configured_scopes(org) {
+        let known: std::collections::HashSet<&str> = all_known_scopes().into_iter().collect();
+        let mut result = Vec::new();
+        for scope in &configured {
+            if known.contains(scope.as_str()) {
+                if !read_only || read_only_scopes().contains(&scope.as_str()) {
+                    result.push(scope.clone());
+                }
+            } else {
+                eprintln!("⚠️  Unknown scope in config ignored: {scope}");
+            }
+        }
+        return result;
+    }
+
+    // Default scopes, filtered for read-only if needed
+    if read_only {
+        read_only_scopes().into_iter().map(String::from).collect()
+    } else {
+        default_scopes().into_iter().map(String::from).collect()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn resolve_login_scopes(
+    _cli_scopes: Option<&str>,
+    _org: Option<&str>,
+    _read_only: bool,
+) -> Vec<String> {
+    crate::auth::types::default_scopes()
+        .into_iter()
+        .map(String::from)
+        .collect()
 }
 
 async fn main_inner() -> anyhow::Result<()> {
@@ -7013,7 +7086,12 @@ async fn main_inner() -> anyhow::Result<()> {
         }
         // --- Auth ---
         Commands::Auth { action } => match action {
-            AuthActions::Login => commands::auth::login(&cfg).await?,
+            AuthActions::Login { scopes, read_only } => {
+                let is_read_only = read_only || cfg.read_only;
+                let resolved =
+                    resolve_login_scopes(scopes.as_deref(), cfg.org.as_deref(), is_read_only);
+                commands::auth::login(&cfg, resolved).await?
+            }
             AuthActions::Logout => commands::auth::logout(&cfg).await?,
             AuthActions::Status => commands::auth::status(&cfg)?,
             #[cfg(debug_assertions)]
