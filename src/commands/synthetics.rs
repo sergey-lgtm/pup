@@ -116,12 +116,21 @@ pub async fn tests_run(
             test
         })
         .collect();
+
     let trigger_payload = serde_json::json!({ "tests": tests_payload });
+
+    let agent = crate::useragent::detect_agent_info();
+    let trigger_app = if agent.detected {
+        format!("pup_cli/{}", agent.name) // e.g. `pup_cli/claude-code`
+    } else {
+        "pup_cli".to_string()
+    };
 
     eprintln!("Triggering {} test(s)...", public_ids.len());
     let trigger_resp = client
         .post(format!("{intake_url}/synthetics/tests/trigger/ci"))
         .headers(auth_headers.clone())
+        .header("X-Trigger-App", trigger_app)
         .json(&trigger_payload)
         .send()
         .await?;
