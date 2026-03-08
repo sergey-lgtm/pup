@@ -2313,7 +2313,7 @@ enum SyntheticsTestActions {
     Run {
         /// Public IDs of tests to run (e.g. abc-def-ghi)
         public_ids: Vec<String>,
-        /// Route test traffic through a local SSH tunnel
+        /// Run tests against internal environments (e.g. dev server) using a SSH tunnel
         #[arg(long)]
         tunnel: bool,
         /// Maximum seconds to wait for results
