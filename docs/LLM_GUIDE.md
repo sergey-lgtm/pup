@@ -127,6 +127,8 @@ pup logs search --query="status:error AND service:api" --from=1h --limit=100
 
 # Aggregate logs (counting, statistics)
 pup logs aggregate --query="*" --from=1h --compute="count" --group-by="service"
+pup logs aggregate --query="service:api" --from=1h --compute="avg(@duration)" --group-by="service"
+pup logs aggregate --query="env:prod" --from=30m --compute="percentile(@duration, 99)" --group-by="service"
 
 # Storage tiers
 pup logs search --query="*" --from=30d --storage="flex"

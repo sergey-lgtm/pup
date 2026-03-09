@@ -5615,13 +5615,24 @@ async fn main_inner() -> anyhow::Result<()> {
                     query,
                     from,
                     to,
-                    compute: _,
-                    group_by: _,
-                    limit: _,
+                    compute,
+                    group_by,
+                    limit,
                     storage,
                 } => {
-                    commands::logs::aggregate(&cfg, query.unwrap_or_default(), from, to, storage)
-                        .await?;
+                    commands::logs::aggregate(
+                        &cfg,
+                        commands::logs::AggregateArgs {
+                            query: query.unwrap_or_default(),
+                            from,
+                            to,
+                            compute,
+                            group_by,
+                            limit,
+                            storage,
+                        },
+                    )
+                    .await?;
                 }
                 LogActions::Archives { action } => match action {
                     LogArchiveActions::List => commands::logs::archives_list(&cfg).await?,

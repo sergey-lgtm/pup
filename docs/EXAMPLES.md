@@ -112,8 +112,22 @@ pup logs search \
 pup logs aggregate \
   --query="service:web-app" \
   --from="1h" \
-  --compute="count:*" \
+  --compute="count" \
   --group-by="status"
+
+# Average duration by service
+pup logs aggregate \
+  --query="service:web-app" \
+  --from="1h" \
+  --compute="avg(@duration)" \
+  --group-by="service"
+
+# 99th percentile latency by service
+pup logs aggregate \
+  --query="env:prod" \
+  --from="30m" \
+  --compute="percentile(@duration, 99)" \
+  --group-by="service"
 ```
 
 ### Search Logs in Specific Storage Tier
@@ -127,7 +141,7 @@ pup logs search --query="status:error" --from="30d" --storage="online-archives"
 # Search standard indexes (default, fastest tier)
 pup logs search --query="service:web-app" --from="1h" --storage="indexes"
 
-# Search all storage tiers (default when --storage is not specified)
+# Use Datadog's default storage behavior
 pup logs search --query="status:warn" --from="1h"
 ```
 

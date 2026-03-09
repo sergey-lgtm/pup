@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV2::api_logs::{ListLogsOptionalParams, LogsAPI};
 #[cfg(not(target_arch = "wasm32"))]
@@ -9,8 +9,7 @@ use datadog_api_client::datadogV2::api_logs_custom_destinations::LogsCustomDesti
 use datadog_api_client::datadogV2::api_logs_metrics::LogsMetricsAPI;
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV2::model::{
-    LogsAggregateRequest, LogsAggregationFunction, LogsCompute, LogsListRequest,
-    LogsListRequestPage, LogsQueryFilter, LogsSort, LogsStorageTier,
+    LogsListRequest, LogsListRequestPage, LogsQueryFilter, LogsSort, LogsStorageTier,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -19,22 +18,134 @@ use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
-/// Parse a storage tier string into a `LogsStorageTier` enum value.
-/// Returns `None` if the input is `None`; returns an error for unrecognised values.
-#[cfg(not(target_arch = "wasm32"))]
-fn parse_storage_tier(storage: Option<String>) -> Result<Option<LogsStorageTier>> {
+pub struct AggregateArgs {
+    pub query: String,
+    pub from: String,
+    pub to: String,
+    pub compute: String,
+    pub group_by: Option<String>,
+    pub limit: i32,
+    pub storage: Option<String>,
+}
+
+fn normalize_storage_tier(storage: Option<String>) -> Result<Option<String>> {
     match storage {
         None => Ok(None),
         Some(s) => match s.to_lowercase().as_str() {
-            "indexes" => Ok(Some(LogsStorageTier::INDEXES)),
-            "online-archives" | "online_archives" => Ok(Some(LogsStorageTier::ONLINE_ARCHIVES)),
-            "flex" => Ok(Some(LogsStorageTier::FLEX)),
+            "indexes" => Ok(Some("indexes".into())),
+            "online-archives" | "online_archives" => Ok(Some("online-archives".into())),
+            "flex" => Ok(Some("flex".into())),
             other => anyhow::bail!(
                 "unknown storage tier {:?}; valid values are: indexes, online-archives, flex",
                 other
             ),
         },
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_storage_tier(storage: Option<String>) -> Result<Option<LogsStorageTier>> {
+    match normalize_storage_tier(storage)? {
+        None => Ok(None),
+        Some(tier) => match tier.as_str() {
+            "indexes" => Ok(Some(LogsStorageTier::INDEXES)),
+            "online-archives" => Ok(Some(LogsStorageTier::ONLINE_ARCHIVES)),
+            "flex" => Ok(Some(LogsStorageTier::FLEX)),
+            _ => unreachable!("storage tier is normalized"),
+        },
+    }
+}
+
+fn parse_compute_raw(input: &str) -> Result<(String, Option<String>)> {
+    let input = input.trim();
+    if input.is_empty() {
+        bail!("--compute is required");
+    }
+
+    if input == "count" {
+        return Ok(("count".into(), None));
+    }
+
+    if let Some(paren) = input.find('(') {
+        let func = &input[..paren];
+        let rest = input[paren + 1..].trim_end_matches(')').trim();
+
+        if func == "percentile" {
+            let parts: Vec<&str> = rest.splitn(2, ',').collect();
+            if parts.len() != 2 {
+                bail!("percentile requires field and value: percentile(@duration, 99)");
+            }
+            let metric = parts[0].trim().to_string();
+            let pct: u32 = parts[1]
+                .trim()
+                .parse()
+                .map_err(|_| anyhow::anyhow!("invalid percentile value: {}", parts[1].trim()))?;
+            let agg_name = match pct {
+                75 => "pc75",
+                90 => "pc90",
+                95 => "pc95",
+                98 => "pc98",
+                99 => "pc99",
+                _ => bail!("unsupported percentile: {pct} (supported: 75, 90, 95, 98, 99)"),
+            };
+            return Ok((agg_name.into(), Some(metric)));
+        }
+
+        let metric = rest.to_string();
+        let agg_name = match func {
+            "avg" | "sum" | "min" | "max" | "median" | "cardinality" => func.to_string(),
+            "count" => bail!("count does not accept a field argument; use just 'count'"),
+            _ => bail!("unknown aggregation function: {func}"),
+        };
+        return Ok((agg_name, Some(metric)));
+    }
+
+    bail!(
+        "invalid --compute format: {input:?}\n\
+         Expected: count, avg(@duration), sum(@duration), percentile(@duration, 99), etc."
+    )
+}
+
+fn build_aggregate_body(
+    query: String,
+    from_ms: i64,
+    to_ms: i64,
+    compute: String,
+    group_by: Option<String>,
+    limit: i32,
+    storage: Option<String>,
+) -> Result<serde_json::Value> {
+    let (aggregation, metric) = parse_compute_raw(&compute)?;
+    let storage_tier = normalize_storage_tier(storage)?;
+
+    let mut filter = serde_json::json!({
+        "query": query,
+        "from": from_ms.to_string(),
+        "to": to_ms.to_string()
+    });
+    if let Some(tier) = storage_tier {
+        filter["storage_tier"] = serde_json::Value::String(tier);
+    }
+
+    let mut compute_obj = serde_json::json!({ "aggregation": aggregation });
+    if let Some(metric) = metric {
+        compute_obj["metric"] = serde_json::Value::String(metric);
+    }
+
+    let mut body = serde_json::json!({
+        "filter": filter,
+        "compute": [compute_obj]
+    });
+
+    if let Some(facet) = group_by {
+        let mut group_by_obj = serde_json::json!({ "facet": facet });
+        if limit > 0 {
+            group_by_obj["limit"] = serde_json::json!(limit);
+        }
+        body["group_by"] = serde_json::json!([group_by_obj]);
+    }
+
+    Ok(body)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -169,67 +280,38 @@ pub async fn query(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn aggregate(
-    cfg: &Config,
-    query: String,
-    from: String,
-    to: String,
-    storage: Option<String>,
-) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsAPI::with_config(dd_cfg),
-    };
-
+pub async fn aggregate(cfg: &Config, args: AggregateArgs) -> Result<()> {
+    let AggregateArgs {
+        query,
+        from,
+        to,
+        compute,
+        group_by,
+        limit,
+        storage,
+    } = args;
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
-
-    let storage_tier = parse_storage_tier(storage)?;
-
-    let mut filter = LogsQueryFilter::new()
-        .query(query)
-        .from(from_ms.to_string())
-        .to(to_ms.to_string());
-    if let Some(tier) = storage_tier {
-        filter = filter.storage_tier(tier);
-    }
-
-    let body = LogsAggregateRequest::new()
-        .filter(filter)
-        .compute(vec![LogsCompute::new(LogsAggregationFunction::COUNT)]);
-
-    let resp = api
-        .aggregate_logs(body)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to aggregate logs: {:?}", e))?;
-
-    formatter::output(cfg, &resp)?;
+    let body = build_aggregate_body(query, from_ms, to_ms, compute, group_by, limit, storage)?;
+    let data = client::raw_post(cfg, "/api/v2/logs/analytics/aggregate", body).await?;
+    formatter::output(cfg, &data)?;
     Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn aggregate(
-    cfg: &Config,
-    query: String,
-    from: String,
-    to: String,
-    storage: Option<String>,
-) -> Result<()> {
+pub async fn aggregate(cfg: &Config, args: AggregateArgs) -> Result<()> {
+    let AggregateArgs {
+        query,
+        from,
+        to,
+        compute,
+        group_by,
+        limit,
+        storage,
+    } = args;
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
-    let mut filter = serde_json::json!({
-        "query": query,
-        "from": from_ms.to_string(),
-        "to": to_ms.to_string()
-    });
-    if let Some(tier) = storage {
-        filter["storage_tier"] = serde_json::Value::String(tier);
-    }
-    let body = serde_json::json!({
-        "filter": filter,
-        "compute": [{ "type": "count" }]
-    });
+    let body = build_aggregate_body(query, from_ms, to_ms, compute, group_by, limit, storage)?;
     let data = crate::api::post(cfg, "/api/v2/logs/analytics/aggregate", &body).await?;
     crate::formatter::output(cfg, &data)
 }
@@ -451,4 +533,169 @@ pub async fn restriction_queries_get(cfg: &Config, query_id: &str) -> Result<()>
     let path = format!("/api/v2/logs/config/restriction_queries/{query_id}");
     let data = crate::api::get(cfg, &path, &[]).await?;
     crate::formatter::output(cfg, &data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_compute_count() {
+        let (aggregation, metric) = parse_compute_raw("count").unwrap();
+        assert_eq!(aggregation, "count");
+        assert!(metric.is_none());
+    }
+
+    #[test]
+    fn test_parse_compute_avg() {
+        let (aggregation, metric) = parse_compute_raw("avg(@duration)").unwrap();
+        assert_eq!(aggregation, "avg");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_sum() {
+        let (aggregation, metric) = parse_compute_raw("sum(@duration)").unwrap();
+        assert_eq!(aggregation, "sum");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_min() {
+        let (aggregation, metric) = parse_compute_raw("min(@duration)").unwrap();
+        assert_eq!(aggregation, "min");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_max() {
+        let (aggregation, metric) = parse_compute_raw("max(@duration)").unwrap();
+        assert_eq!(aggregation, "max");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_median() {
+        let (aggregation, metric) = parse_compute_raw("median(@duration)").unwrap();
+        assert_eq!(aggregation, "median");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_cardinality() {
+        let (aggregation, metric) = parse_compute_raw("cardinality(@usr.id)").unwrap();
+        assert_eq!(aggregation, "cardinality");
+        assert_eq!(metric.unwrap(), "@usr.id");
+    }
+
+    #[test]
+    fn test_parse_compute_percentile_99() {
+        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 99)").unwrap();
+        assert_eq!(aggregation, "pc99");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_percentile_95() {
+        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 95)").unwrap();
+        assert_eq!(aggregation, "pc95");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_percentile_90() {
+        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 90)").unwrap();
+        assert_eq!(aggregation, "pc90");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_empty() {
+        assert!(parse_compute_raw("").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_invalid() {
+        assert!(parse_compute_raw("invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_unknown_function() {
+        assert!(parse_compute_raw("foo(@bar)").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_unsupported_percentile() {
+        assert!(parse_compute_raw("percentile(@duration, 50)").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_percentile_missing_value() {
+        assert!(parse_compute_raw("percentile(@duration)").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_rejects_invalid_count_metric() {
+        let err = parse_compute_raw("count(@duration)").unwrap_err();
+        assert!(err.to_string().contains("does not accept a field"));
+    }
+
+    #[test]
+    fn test_normalize_storage_tier_alias() {
+        let tier = normalize_storage_tier(Some("online_archives".into())).unwrap();
+        assert_eq!(tier.unwrap(), "online-archives");
+    }
+
+    #[test]
+    fn test_build_aggregate_body_includes_compute_group_by_limit_and_storage() {
+        let body = build_aggregate_body(
+            "service:web".into(),
+            1,
+            2,
+            "avg(@duration)".into(),
+            Some("service".into()),
+            3,
+            Some("flex".into()),
+        )
+        .unwrap();
+
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "filter": {
+                    "query": "service:web",
+                    "from": "1",
+                    "to": "2",
+                    "storage_tier": "flex"
+                },
+                "compute": [{
+                    "aggregation": "avg",
+                    "metric": "@duration"
+                }],
+                "group_by": [{
+                    "facet": "service",
+                    "limit": 3
+                }]
+            })
+        );
+    }
+
+    #[test]
+    fn test_build_aggregate_body_omits_group_by_for_plain_count() {
+        let body = build_aggregate_body("*".into(), 1, 2, "count".into(), None, 10, None).unwrap();
+
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "filter": {
+                    "query": "*",
+                    "from": "1",
+                    "to": "2"
+                },
+                "compute": [{
+                    "aggregation": "count"
+                }]
+            })
+        );
+    }
 }

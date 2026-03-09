@@ -420,8 +420,19 @@ async fn test_logs_aggregate() {
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
 
-    let result =
-        crate::commands::logs::aggregate(&cfg, "*".into(), "1h".into(), "now".into(), None).await;
+    let result = crate::commands::logs::aggregate(
+        &cfg,
+        crate::commands::logs::AggregateArgs {
+            query: "*".into(),
+            from: "1h".into(),
+            to: "now".into(),
+            compute: "count".into(),
+            group_by: None,
+            limit: 10,
+            storage: None,
+        },
+    )
+    .await;
     assert!(result.is_ok(), "logs aggregate failed: {:?}", result.err());
     cleanup_env();
 }
@@ -515,10 +526,15 @@ async fn test_logs_aggregate_with_flex_storage() {
 
     let result = crate::commands::logs::aggregate(
         &cfg,
-        "*".into(),
-        "1h".into(),
-        "now".into(),
-        Some("flex".into()),
+        crate::commands::logs::AggregateArgs {
+            query: "*".into(),
+            from: "1h".into(),
+            to: "now".into(),
+            compute: "count".into(),
+            group_by: None,
+            limit: 10,
+            storage: Some("flex".into()),
+        },
     )
     .await;
     assert!(
