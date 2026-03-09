@@ -2,6 +2,7 @@ pub mod agent;
 pub mod alias;
 pub mod api_keys;
 pub mod apm;
+pub mod app_builder;
 pub mod app_keys;
 pub mod audit_logs;
 pub mod auth;

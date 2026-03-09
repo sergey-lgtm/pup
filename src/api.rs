@@ -63,6 +63,20 @@ pub async fn delete(cfg: &Config, path: &str) -> Result<serde_json::Value> {
     send(req).await
 }
 
+/// Perform a DELETE request with a JSON body.
+pub async fn delete_with_body(
+    cfg: &Config,
+    path: &str,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    let url = format!("{}{}", cfg.api_base_url(), path);
+    let client = reqwest::Client::new();
+    let mut req = client.delete(&url);
+    req = apply_auth(req, cfg)?;
+    req = req.json(body);
+    send(req).await
+}
+
 fn apply_auth(req: reqwest::RequestBuilder, cfg: &Config) -> Result<reqwest::RequestBuilder> {
     if let Some(token) = &cfg.access_token {
         Ok(req.header("Authorization", format!("Bearer {token}")))

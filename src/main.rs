@@ -164,6 +164,52 @@ enum Commands {
         #[command(subcommand)]
         action: ApiKeyActions,
     },
+    /// Manage App Builder applications
+    ///
+    /// Create, manage, and deploy custom internal tools using Datadog's
+    /// low-code App Builder platform.
+    ///
+    /// CAPABILITIES:
+    ///   • List, get, create, update, and delete apps
+    ///   • Bulk delete multiple apps
+    ///   • Publish and unpublish apps
+    ///
+    /// EXAMPLES:
+    ///   # List all apps
+    ///   pup app-builder list
+    ///
+    ///   # Filter apps by query
+    ///   pup app-builder list --query="incident"
+    ///
+    ///   # Get app details
+    ///   pup app-builder get <app-id>
+    ///
+    ///   # Create an app from file
+    ///   pup app-builder create --body @app.json
+    ///
+    ///   # Update an app
+    ///   pup app-builder update <app-id> --body @updated.json
+    ///
+    ///   # Delete an app
+    ///   pup app-builder delete <app-id>
+    ///
+    ///   # Delete multiple apps
+    ///   pup app-builder delete-batch --app-ids="id1,id2,id3"
+    ///
+    ///   # Publish an app
+    ///   pup app-builder publish <app-id>
+    ///
+    ///   # Unpublish an app
+    ///   pup app-builder unpublish <app-id>
+    ///
+    /// AUTHENTICATION:
+    ///   Requires API key authentication with Actions API access.
+    ///   The application key must be registered for Actions API access.
+    #[command(name = "app-builder", verbatim_doc_comment)]
+    AppBuilder {
+        #[command(subcommand)]
+        action: AppBuilderActions,
+    },
     /// Manage application keys
     ///
     /// Manage Datadog application keys.
@@ -3077,6 +3123,69 @@ enum ApiKeyActions {
     },
     /// Delete an API key (DESTRUCTIVE)
     Delete { key_id: String },
+}
+
+// ---- App Builder ----
+#[derive(Subcommand)]
+enum AppBuilderActions {
+    /// List App Builder applications
+    List {
+        /// Filter apps by query string
+        #[arg(long, help = "Filter apps by query string")]
+        query: Option<String>,
+    },
+    /// Get App Builder application details
+    Get {
+        /// App ID (UUID)
+        #[arg(name = "app-id")]
+        app_id: String,
+    },
+    /// Create a new App Builder application
+    Create {
+        #[arg(
+            long,
+            name = "body",
+            help = "JSON body (@filepath or - for stdin) (required)"
+        )]
+        file: String,
+    },
+    /// Update an App Builder application
+    Update {
+        /// App ID (UUID)
+        #[arg(name = "app-id")]
+        app_id: String,
+        #[arg(
+            long,
+            name = "body",
+            help = "JSON body (@filepath or - for stdin) (required)"
+        )]
+        file: String,
+    },
+    /// Delete an App Builder application (DESTRUCTIVE)
+    Delete {
+        /// App ID (UUID)
+        #[arg(name = "app-id")]
+        app_id: String,
+    },
+    /// Delete multiple App Builder applications (DESTRUCTIVE)
+    #[command(name = "delete-batch")]
+    DeleteBatch {
+        /// Comma-separated list of app IDs (UUIDs)
+        #[arg(long, value_delimiter = ',', help = "Comma-separated list of app IDs")]
+        app_ids: Vec<String>,
+    },
+    /// Publish an App Builder application
+    Publish {
+        /// App ID (UUID)
+        #[arg(name = "app-id")]
+        app_id: String,
+    },
+    /// Unpublish an App Builder application
+    Unpublish {
+        /// App ID (UUID)
+        #[arg(name = "app-id")]
+        app_id: String,
+    },
 }
 
 // ---- App Keys ----
@@ -6185,6 +6294,36 @@ async fn main_inner() -> anyhow::Result<()> {
                 }
                 ApiKeyActions::Delete { key_id } => {
                     commands::api_keys::delete(&cfg, &key_id).await?;
+                }
+            }
+        }
+        // --- App Builder ---
+        Commands::AppBuilder { action } => {
+            cfg.validate_auth()?;
+            match action {
+                AppBuilderActions::List { query } => {
+                    commands::app_builder::list(&cfg, query.as_deref()).await?;
+                }
+                AppBuilderActions::Get { app_id } => {
+                    commands::app_builder::get(&cfg, &app_id).await?;
+                }
+                AppBuilderActions::Create { file } => {
+                    commands::app_builder::create(&cfg, &file).await?;
+                }
+                AppBuilderActions::Update { app_id, file } => {
+                    commands::app_builder::update(&cfg, &app_id, &file).await?;
+                }
+                AppBuilderActions::Delete { app_id } => {
+                    commands::app_builder::delete(&cfg, &app_id).await?;
+                }
+                AppBuilderActions::DeleteBatch { app_ids } => {
+                    commands::app_builder::delete_batch(&cfg, &app_ids).await?;
+                }
+                AppBuilderActions::Publish { app_id } => {
+                    commands::app_builder::publish(&cfg, &app_id).await?;
+                }
+                AppBuilderActions::Unpublish { app_id } => {
+                    commands::app_builder::unpublish(&cfg, &app_id).await?;
                 }
             }
         }
