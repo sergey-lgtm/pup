@@ -1,8 +1,6 @@
 use anyhow::Result;
 #[cfg(not(target_arch = "wasm32"))]
-use datadog_api_client::datadogV2::api_app_builder::{
-    AppBuilderAPI, ListAppsOptionalParams,
-};
+use datadog_api_client::datadogV2::api_app_builder::{AppBuilderAPI, ListAppsOptionalParams};
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV2::model::{
     AppDefinitionType, CreateAppRequest, DeleteAppsRequest, DeleteAppsRequestDataItems,
@@ -107,8 +105,7 @@ pub async fn update(cfg: &Config, app_id: &str, file: &str) -> Result<()> {
 pub async fn update(cfg: &Config, app_id: &str, file: &str) -> Result<()> {
     util::parse_uuid(app_id, "app")?;
     let body: serde_json::Value = util::read_json_file(file)?;
-    let data =
-        crate::api::put(cfg, &format!("/api/v2/app-builder/apps/{app_id}"), &body).await?;
+    let data = crate::api::put(cfg, &format!("/api/v2/app-builder/apps/{app_id}"), &body).await?;
     crate::formatter::output(cfg, &data)
 }
 
@@ -167,9 +164,7 @@ pub async fn delete_batch(cfg: &Config, app_ids: &[String]) -> Result<()> {
     }
     let items: Vec<_> = app_ids
         .iter()
-        .map(|id| {
-            serde_json::json!({"id": id, "type": "appDefinitions"})
-        })
+        .map(|id| serde_json::json!({"id": id, "type": "appDefinitions"}))
         .collect();
     let body = serde_json::json!({"data": items});
     let data = crate::api::delete_with_body(cfg, "/api/v2/app-builder/apps", &body).await?;
