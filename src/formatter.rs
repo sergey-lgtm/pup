@@ -58,7 +58,7 @@ pub fn format_and_print<T: Serialize>(
     agent_mode: bool,
     meta: Option<&Metadata>,
 ) -> Result<()> {
-    if agent_mode {
+    if agent_mode && *format == OutputFormat::Json {
         let sorted_data = sort_json_value(serde_json::to_value(data)?);
         // Hoist: when the API wraps its list/object in a nested "data" key,
         // use that inner value directly so agents see .data[*] instead of .data.data[*].
@@ -665,6 +665,22 @@ mod tests {
     fn test_format_and_print_agent_mode_no_meta() {
         let data = serde_json::json!({"name": "test"});
         let result = format_and_print(&data, &OutputFormat::Json, true, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_format_and_print_agent_mode_respects_yaml_flag() {
+        // In agent mode, -o yaml should bypass the agent envelope and use YAML output.
+        let data = serde_json::json!({"name": "test"});
+        let result = format_and_print(&data, &OutputFormat::Yaml, true, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_format_and_print_agent_mode_respects_table_flag() {
+        // In agent mode, -o table should bypass the agent envelope and use table output.
+        let data = serde_json::json!([{"id": 1, "name": "test"}]);
+        let result = format_and_print(&data, &OutputFormat::Table, true, None);
         assert!(result.is_ok());
     }
 
