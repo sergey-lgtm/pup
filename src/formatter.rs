@@ -119,8 +119,9 @@ pub fn output<T: Serialize>(cfg: &crate::config::Config, data: &T) -> Result<()>
 
 /// Build a `CompressConfig` from runtime config, or `None` if compact mode is disabled.
 ///
-/// `command` selects a per-command field projector (e.g. `"monitors list"` strips the
-/// bulky options object; `"logs search"` flattens the nested attributes wrapper).
+/// `command` selects per-command `FieldWeights` (token-budget field selection) and a
+/// structural `flatten` function if the response wraps fields in an `attributes` envelope
+/// (e.g. logs, spans).
 pub fn compress_cfg_from(
     cfg: &crate::config::Config,
     command: Option<&str>,
@@ -130,7 +131,9 @@ pub fn compress_cfg_from(
             string_trunc: cfg.compact_string_trunc,
             array_items_top: cfg.compact_array_top,
             array_items_nested: cfg.compact_array_nested,
-            project: command.and_then(rtk::projection_for_command),
+            flatten: command.and_then(rtk::flatten_for_command),
+            field_weights: command.and_then(rtk::weights_for_command),
+            per_item_token_budget: 300,
         })
     } else {
         None
