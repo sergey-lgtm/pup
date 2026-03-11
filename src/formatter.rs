@@ -133,7 +133,7 @@ pub fn compress_cfg_from(
             array_items_nested: cfg.compact_array_nested,
             flatten: command.and_then(rtk::flatten_for_command),
             field_weights: command.and_then(rtk::weights_for_command),
-            per_item_token_budget: 150,
+            per_item_token_budget: cfg.compact_item_budget,
         })
     } else {
         None
@@ -982,6 +982,7 @@ mod tests {
             compact_string_trunc: 200,
             compact_array_top: 20,
             compact_array_nested: 10,
+            compact_item_budget: 150,
             read_only: false,
         };
         let data = serde_json::json!({"hello": "world"});

@@ -41,6 +41,10 @@ pub(crate) struct Cli {
     /// Compress agent mode output (strip nulls, truncate long strings, sample large arrays)
     #[arg(long = "agent-compact", global = true)]
     agent_compact: bool,
+    /// Token budget per item in compact agent mode; controls compression aggressiveness
+    /// (~100 = only must-have fields, ~150 = MCP-like default, ~300 = relaxed)
+    #[arg(long = "agent-budget", global = true)]
+    agent_budget: Option<usize>,
     /// Block all write operations (create, update, delete)
     #[arg(long, global = true)]
     read_only: bool,
@@ -5522,6 +5526,9 @@ async fn main_inner() -> anyhow::Result<()> {
     }
     if cli.agent_compact {
         cfg.compact_mode = true;
+    }
+    if let Some(budget) = cli.agent_budget {
+        cfg.compact_item_budget = budget;
     }
     // Apply --org flag (higher priority than DD_ORG env var / config file)
     if let Some(org) = cli.org {

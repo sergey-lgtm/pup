@@ -19,6 +19,8 @@ pub struct Config {
     pub compact_string_trunc: usize,
     pub compact_array_top: usize,
     pub compact_array_nested: usize,
+    /// Token budget per top-level item in compact mode (default: 150).
+    pub compact_item_budget: usize,
     pub read_only: bool,
 }
 
@@ -82,6 +84,8 @@ struct FileConfig {
     compact_array_top: Option<usize>,
     /// Max items shown from nested arrays in compact mode (default: 10).
     compact_array_nested: Option<usize>,
+    /// Token budget per top-level item in compact mode (default: 150).
+    compact_item_budget: Option<usize>,
     /// Default OAuth scopes to request on login (comma-separated).
     scopes: Option<String>,
     /// Per-org profile settings. Profile key matches the --org value used at login.
@@ -126,6 +130,9 @@ impl Config {
             compact_array_nested: env_usize("AGENT_COMPACT_ARRAY_NESTED")
                 .or(file_cfg.compact_array_nested)
                 .unwrap_or(10),
+            compact_item_budget: env_usize("AGENT_COMPACT_ITEM_BUDGET")
+                .or(file_cfg.compact_item_budget)
+                .unwrap_or(150),
             read_only: env_bool("DD_READ_ONLY")
                 || env_bool("DD_CLI_READ_ONLY")
                 || file_cfg.read_only.unwrap_or(false),
@@ -156,6 +163,7 @@ impl Config {
             compact_string_trunc: 200,
             compact_array_top: 20,
             compact_array_nested: 10,
+            compact_item_budget: 150,
             read_only: false,
         }
     }
@@ -409,6 +417,7 @@ mod tests {
             compact_string_trunc: 200,
             compact_array_top: 20,
             compact_array_nested: 10,
+            compact_item_budget: 150,
             read_only: false,
         }
     }

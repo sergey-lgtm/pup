@@ -37,6 +37,7 @@ fn test_config(mock_url: &str) -> Config {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     }
 }
@@ -402,6 +403,7 @@ async fn test_logs_search_with_oauth() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -728,6 +730,7 @@ async fn test_events_search_requires_api_keys() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -762,6 +765,7 @@ async fn test_api_get() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -800,6 +804,7 @@ async fn test_api_get_with_query() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -842,6 +847,7 @@ async fn test_api_post() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -879,6 +885,7 @@ async fn test_api_put() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -916,6 +923,7 @@ async fn test_api_patch() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -953,6 +961,7 @@ async fn test_api_delete() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -989,6 +998,7 @@ async fn test_api_error_response() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -1026,6 +1036,7 @@ async fn test_api_bearer_auth() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -1061,6 +1072,7 @@ async fn test_api_no_auth() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -1092,6 +1104,7 @@ async fn test_api_empty_response() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
@@ -1129,6 +1142,7 @@ async fn test_api_server_error() {
         compact_string_trunc: 200,
         compact_array_top: 20,
         compact_array_nested: 10,
+        compact_item_budget: 150,
         read_only: false,
     };
 
