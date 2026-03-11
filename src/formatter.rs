@@ -212,7 +212,11 @@ fn print_table<T: Serialize>(data: &T) -> Result<()> {
 
 /// Recursively flatten a JSON object to dot-notation keys at any depth.
 /// e.g. {"a": {"b": {"c": 1}}} → {"a.b.c": 1}
-fn flatten_deep(value: &serde_json::Value, prefix: &str, out: &mut serde_json::Map<String, serde_json::Value>) {
+fn flatten_deep(
+    value: &serde_json::Value,
+    prefix: &str,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) {
     match value {
         serde_json::Value::Object(map) => {
             for (k, v) in map {
