@@ -23,6 +23,7 @@ pub enum OutputFormat {
     Json,
     Table,
     Yaml,
+    Csv,
 }
 
 impl std::fmt::Display for OutputFormat {
@@ -31,6 +32,7 @@ impl std::fmt::Display for OutputFormat {
             OutputFormat::Json => write!(f, "json"),
             OutputFormat::Table => write!(f, "table"),
             OutputFormat::Yaml => write!(f, "yaml"),
+            OutputFormat::Csv => write!(f, "csv"),
         }
     }
 }
@@ -42,7 +44,8 @@ impl std::str::FromStr for OutputFormat {
             "json" => Ok(OutputFormat::Json),
             "table" => Ok(OutputFormat::Table),
             "yaml" => Ok(OutputFormat::Yaml),
-            _ => bail!("invalid output format: {s:?} (expected json, table, or yaml)"),
+            "csv" => Ok(OutputFormat::Csv),
+            _ => bail!("invalid output format: {s:?} (expected json, table, yaml, or csv)"),
         }
     }
 }
@@ -381,6 +384,8 @@ mod tests {
             OutputFormat::Table
         );
         assert_eq!("yaml".parse::<OutputFormat>().unwrap(), OutputFormat::Yaml);
+        assert_eq!("csv".parse::<OutputFormat>().unwrap(), OutputFormat::Csv);
+        assert_eq!("CSV".parse::<OutputFormat>().unwrap(), OutputFormat::Csv);
         assert!("xml".parse::<OutputFormat>().is_err());
     }
 
@@ -389,6 +394,7 @@ mod tests {
         assert_eq!(OutputFormat::Json.to_string(), "json");
         assert_eq!(OutputFormat::Table.to_string(), "table");
         assert_eq!(OutputFormat::Yaml.to_string(), "yaml");
+        assert_eq!(OutputFormat::Csv.to_string(), "csv");
     }
 
     #[test]

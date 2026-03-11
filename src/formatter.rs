@@ -80,6 +80,7 @@ pub fn format_and_print<T: Serialize>(
         OutputFormat::Json => print_json(data),
         OutputFormat::Yaml => print_yaml(data),
         OutputFormat::Table => print_table(data),
+        OutputFormat::Csv => print_csv(data),
     }
 }
 
@@ -206,6 +207,104 @@ fn print_table<T: Serialize>(data: &T) -> Result<()> {
     }
 
     println!("{table}");
+    Ok(())
+}
+
+/// Recursively flatten a JSON object to dot-notation keys at any depth.
+/// e.g. {"a": {"b": {"c": 1}}} → {"a.b.c": 1}
+fn flatten_deep(
+    value: &serde_json::Value,
+    prefix: &str,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (k, v) in map {
+                let key = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{prefix}.{k}")
+                };
+                flatten_deep(v, &key, out);
+            }
+        }
+        _ => {
+            out.insert(prefix.to_string(), value.clone());
+        }
+    }
+}
+
+/// Escape a single CSV field: wrap in quotes if it contains commas, quotes, or newlines.
+/// Double any embedded double-quote characters.
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// Render a JSON value as a plain string for CSV output (no truncation).
+fn csv_cell(value: Option<&serde_json::Value>) -> String {
+    match value {
+        None | Some(serde_json::Value::Null) => String::new(),
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(serde_json::Value::Number(n)) => n.to_string(),
+        Some(serde_json::Value::Bool(b)) => b.to_string(),
+        Some(other) => other.to_string(),
+    }
+}
+
+fn print_csv<T: Serialize>(data: &T) -> Result<()> {
+    let value = serde_json::to_value(data)?;
+    let raw_rows = extract_rows(&value);
+
+    if raw_rows.is_empty() {
+        return Ok(());
+    }
+
+    // Deep-flatten every row so all nested sub-fields become columns.
+    let flat_rows: Vec<serde_json::Map<String, serde_json::Value>> = raw_rows
+        .iter()
+        .map(|r| {
+            let mut out = serde_json::Map::new();
+            flatten_deep(r, "", &mut out);
+            out
+        })
+        .collect();
+
+    // Collect all headers, preserving first-seen insertion order.
+    let mut header_set = std::collections::HashSet::new();
+    let mut headers: Vec<String> = Vec::new();
+    for row in &flat_rows {
+        for key in row.keys() {
+            if header_set.insert(key.clone()) {
+                headers.push(key.clone());
+            }
+        }
+    }
+    headers.sort();
+
+    // Print header row.
+    println!(
+        "{}",
+        headers
+            .iter()
+            .map(|h| csv_escape(h))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+
+    // Print data rows.
+    for row in &flat_rows {
+        let line = headers
+            .iter()
+            .map(|h| csv_escape(&csv_cell(row.get(h.as_str()))))
+            .collect::<Vec<_>>()
+            .join(",");
+        println!("{line}");
+    }
+
     Ok(())
 }
 
@@ -720,6 +819,101 @@ mod tests {
             format_cell(Some(&serde_json::json!([1, 2, 3]))),
             "[1, 2, 3]"
         );
+    }
+
+    #[test]
+    fn test_csv_escape_plain() {
+        assert_eq!(csv_escape("hello"), "hello");
+    }
+
+    #[test]
+    fn test_csv_escape_with_comma() {
+        assert_eq!(csv_escape("a,b"), "\"a,b\"");
+    }
+
+    #[test]
+    fn test_csv_escape_with_quotes() {
+        assert_eq!(csv_escape("say \"hi\""), "\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn test_csv_escape_with_newline() {
+        assert_eq!(csv_escape("a\nb"), "\"a\nb\"");
+    }
+
+    #[test]
+    fn test_csv_cell_string() {
+        assert_eq!(csv_cell(Some(&serde_json::json!("hello"))), "hello");
+    }
+
+    #[test]
+    fn test_csv_cell_null() {
+        assert_eq!(csv_cell(None), "");
+        assert_eq!(csv_cell(Some(&serde_json::Value::Null)), "");
+    }
+
+    #[test]
+    fn test_csv_cell_number() {
+        assert_eq!(csv_cell(Some(&serde_json::json!(42))), "42");
+    }
+
+    #[test]
+    fn test_csv_cell_bool() {
+        assert_eq!(csv_cell(Some(&serde_json::json!(true))), "true");
+    }
+
+    #[test]
+    fn test_flatten_deep_simple() {
+        let val = serde_json::json!({"id": "x", "name": "foo"});
+        let mut out = serde_json::Map::new();
+        flatten_deep(&val, "", &mut out);
+        assert_eq!(out.get("id").unwrap(), "x");
+        assert_eq!(out.get("name").unwrap(), "foo");
+    }
+
+    #[test]
+    fn test_flatten_deep_nested() {
+        let val = serde_json::json!({"a": {"b": {"c": 1}}});
+        let mut out = serde_json::Map::new();
+        flatten_deep(&val, "", &mut out);
+        assert_eq!(out.get("a.b.c").unwrap(), 1);
+        assert!(!out.contains_key("a"));
+        assert!(!out.contains_key("a.b"));
+    }
+
+    #[test]
+    fn test_flatten_deep_mixed() {
+        let val = serde_json::json!({"id": "x", "attrs": {"host": "web", "tags": {"env": "prod"}}});
+        let mut out = serde_json::Map::new();
+        flatten_deep(&val, "", &mut out);
+        assert_eq!(out.get("id").unwrap(), "x");
+        assert_eq!(out.get("attrs.host").unwrap(), "web");
+        assert_eq!(out.get("attrs.tags.env").unwrap(), "prod");
+    }
+
+    #[test]
+    fn test_print_csv_basic() {
+        let data = serde_json::json!([{"id": 1, "name": "test"}]);
+        assert!(print_csv(&data).is_ok());
+    }
+
+    #[test]
+    fn test_print_csv_empty() {
+        let data = serde_json::json!([]);
+        assert!(print_csv(&data).is_ok());
+    }
+
+    #[test]
+    fn test_print_csv_nested() {
+        let data = serde_json::json!([{"id": 1, "attrs": {"host": "web", "env": "prod"}}]);
+        assert!(print_csv(&data).is_ok());
+    }
+
+    #[test]
+    fn test_format_and_print_csv() {
+        let data = serde_json::json!([{"id": 1, "name": "test"}]);
+        let result = format_and_print(&data, &OutputFormat::Csv, false, None);
+        assert!(result.is_ok());
     }
 
     #[test]

@@ -28,7 +28,7 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "pup", version = version::VERSION, about = "Datadog API CLI")]
 pub(crate) struct Cli {
-    /// Output format (json, table, yaml)
+    /// Output format (json, table, yaml, csv)
     #[arg(short, long, global = true, default_value = "json")]
     output: String,
     /// Auto-approve destructive operations
@@ -4955,7 +4955,7 @@ fn build_agent_schema_scoped(
                 "name": "--output",
                 "type": "string",
                 "default": "json",
-                "description": "Output format (json, table, yaml)"
+                "description": "Output format (json, table, yaml, csv)"
             },
             {
                 "name": "--yes",
@@ -5075,7 +5075,7 @@ fn build_agent_schema(cmd: &clap::Command) -> serde_json::Value {
                 "name": "--output",
                 "type": "string",
                 "default": "json",
-                "description": "Output format (json, table, yaml)"
+                "description": "Output format (json, table, yaml, csv)"
             },
             {
                 "name": "--yes",
