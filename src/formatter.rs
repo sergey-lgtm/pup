@@ -105,6 +105,7 @@ pub fn format_and_print<T: Serialize>(
             OutputFormat::Yaml => print_yaml(&output_data),
             OutputFormat::Table => print_table(&output_data),
             OutputFormat::Csv => print_csv(&output_data),
+            OutputFormat::Tsv => print_tsv(&output_data),
         };
     }
 
@@ -1133,7 +1134,7 @@ mod tests {
     #[test]
     fn test_format_and_print_tsv() {
         let data = serde_json::json!([{"id": 1, "name": "test"}]);
-        let result = format_and_print(&data, &OutputFormat::Tsv, false, None);
+        let result = format_and_print(&data, &OutputFormat::Tsv, false, None, None);
         assert!(result.is_ok());
     }
 }
