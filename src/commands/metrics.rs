@@ -133,7 +133,7 @@ pub async fn query(cfg: &Config, query: String, from: String, to: String) -> Res
         .query_metrics(from_ts, to_ts, query)
         .await
         .map_err(|e| anyhow::anyhow!("failed to query metrics: {e:?}"))?;
-    formatter::output(cfg, &resp)
+    formatter::output_cmd(cfg, &resp, "metrics query")
 }
 
 #[cfg(target_arch = "wasm32")]

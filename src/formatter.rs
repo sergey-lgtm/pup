@@ -117,6 +117,23 @@ pub fn output<T: Serialize>(cfg: &crate::config::Config, data: &T) -> Result<()>
     )
 }
 
+/// Like `output`, but passes a command name so the right field weights and flatten
+/// function are selected in compact agent mode.
+pub fn output_cmd<T: Serialize>(
+    cfg: &crate::config::Config,
+    data: &T,
+    command: &str,
+) -> Result<()> {
+    let compress_cfg = compress_cfg_from(cfg, Some(command));
+    format_and_print(
+        data,
+        &cfg.output_format,
+        cfg.agent_mode,
+        compress_cfg.as_ref(),
+        None,
+    )
+}
+
 /// Build a `CompressConfig` from runtime config, or `None` if compact mode is disabled.
 ///
 /// `command` selects per-command `FieldWeights` (token-budget field selection) and a

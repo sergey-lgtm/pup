@@ -40,7 +40,7 @@ pub async fn list(cfg: &Config, limit: i64) -> Result<()> {
         .list_incidents(params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to list incidents: {:?}", e))?;
-    formatter::output(cfg, &resp)?;
+    formatter::output_cmd(cfg, &resp, "incidents list")?;
     Ok(())
 }
 

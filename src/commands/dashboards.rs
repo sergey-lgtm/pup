@@ -21,7 +21,7 @@ pub async fn list(cfg: &Config) -> Result<()> {
         .list_dashboards(ListDashboardsOptionalParams::default())
         .await
         .map_err(|e| anyhow::anyhow!("failed to list dashboards: {e:?}"))?;
-    formatter::output(cfg, &resp)
+    formatter::output_cmd(cfg, &resp, "dashboards list")
 }
 
 #[cfg(target_arch = "wasm32")]

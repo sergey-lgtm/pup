@@ -17,6 +17,7 @@
 //! rather than dropped. This adapts to actual data sizes — a tiny `options` object
 //! survives; a 2 KB one is dropped. Unlisted fields get `default_weight`.
 
+use chrono::{DateTime, TimeZone, Utc};
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
@@ -106,38 +107,59 @@ pub static SPAN_WEIGHTS: FieldWeights = FieldWeights {
     default_weight: 0.10,
 };
 
+/// Incident weights — applied to the output of `flatten_incident` (flat structure).
 pub static INCIDENT_WEIGHTS: FieldWeights = FieldWeights {
     weights: &[
         ("id", 1.0),
         ("title", 1.0),
         ("severity", 1.0),
         ("state", 1.0),
-        ("created", 1.0),
+        ("created", 0.90),
         ("commander", 0.80),
-        ("created_by", 0.60),
-        ("customer_impacted", 0.60),
-        ("resolved", 0.50),
-        ("postmortem_id", 0.30),
-        // The raw `fields` object contains schema metadata, not values — low value
-        ("fields", 0.02),
-        ("field_analytics", 0.02),
+        ("customer_impacted", 0.70),
+        ("resolved", 0.60),
     ],
-    default_weight: 0.25,
+    default_weight: 0.30,
 };
 
+/// Event weights — applied to the output of `flatten_event` (flat structure).
 pub static EVENT_WEIGHTS: FieldWeights = FieldWeights {
     weights: &[
         ("title", 1.0),
         ("timestamp", 1.0),
         ("message", 0.80),
-        ("tags", 0.60),
-        ("id", 0.50),
-        ("source", 0.50),
-        // deep internal metadata bags
-        ("_dd", 0.02),
-        ("evt", 0.10),
+        ("service", 0.70),
+        ("tags", 0.50),
+        ("id", 0.40),
+    ],
+    default_weight: 0.10,
+};
+
+pub static DASHBOARD_WEIGHTS: FieldWeights = FieldWeights {
+    weights: &[
+        ("id", 1.0),
+        ("title", 1.0),
+        ("url", 0.80),
+        ("description", 0.60),
+        ("modified_at", 0.40),
+        ("author_handle", 0.20),
+        ("created_at", 0.15),
+        ("is_read_only", 0.05),
+        ("layout_type", 0.05),
     ],
     default_weight: 0.20,
+};
+
+/// Metric weights — applied to the output of `flatten_metric` (summary structure).
+pub static METRIC_WEIGHTS: FieldWeights = FieldWeights {
+    weights: &[
+        ("query", 1.0),
+        ("series", 1.0),
+        ("from", 0.80),
+        ("to", 0.80),
+        ("status", 0.30),
+    ],
+    default_weight: 0.10,
 };
 
 // ---------------------------------------------------------------------------
@@ -202,7 +224,9 @@ pub fn weights_for_command(command: &str) -> Option<&'static FieldWeights> {
         "logs search" => Some(&LOG_WEIGHTS),
         "traces search" | "traces aggregate" => Some(&SPAN_WEIGHTS),
         "incidents list" | "incidents get" => Some(&INCIDENT_WEIGHTS),
-        "events search" => Some(&EVENT_WEIGHTS),
+        "events search" | "events list" => Some(&EVENT_WEIGHTS),
+        "dashboards list" => Some(&DASHBOARD_WEIGHTS),
+        "metrics query" => Some(&METRIC_WEIGHTS),
         _ => None,
     }
 }
@@ -212,6 +236,10 @@ pub fn flatten_for_command(command: &str) -> Option<fn(&Value) -> Value> {
     match command {
         "logs search" => Some(flatten_log),
         "traces search" | "traces aggregate" => Some(flatten_span),
+        "incidents list" | "incidents get" => Some(flatten_incident),
+        "events search" | "events list" => Some(flatten_event),
+        "dashboards list" => Some(flatten_dashboards),
+        "metrics query" => Some(flatten_metric),
         _ => None,
     }
 }
@@ -277,6 +305,172 @@ pub fn flatten_span(v: &Value) -> Value {
         }
     }
     Value::Object(out)
+}
+
+/// Incident (v2 API): lift attributes.{title, severity, state, created, commander,
+/// customer_impacted, resolved} to top level. Drops the verbose `fields` schema bag.
+pub fn flatten_incident(v: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    if let Some(id) = v.get("id") {
+        out.insert("id".into(), id.clone());
+    }
+    if let Some(attrs) = v.get("attributes") {
+        for &field in &[
+            "title",
+            "severity",
+            "state",
+            "created",
+            "customer_impacted",
+            "resolved",
+        ] {
+            if let Some(val) = attrs.get(field) {
+                if !val.is_null() {
+                    out.insert(field.into(), val.clone());
+                }
+            }
+        }
+        // Commander may be a nested object — extract handle or name.
+        if let Some(cmd) = attrs.get("commander") {
+            let name = cmd
+                .get("data")
+                .and_then(|d| d.get("attributes"))
+                .and_then(|a| a.get("handle").or_else(|| a.get("name")))
+                .or_else(|| cmd.get("handle"))
+                .or_else(|| cmd.get("name"));
+            if let Some(n) = name {
+                out.insert("commander".into(), n.clone());
+            }
+        }
+    }
+    Value::Object(out)
+}
+
+/// Event (v2 API): lift outer attributes.{timestamp, message, tags} and inner
+/// attributes.attributes.{title, service} to top level. Drops `_dd` internal bag.
+pub fn flatten_event(v: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    if let Some(id) = v.get("id") {
+        out.insert("id".into(), id.clone());
+    }
+    if let Some(attrs) = v.get("attributes") {
+        for &field in &["timestamp", "message", "tags"] {
+            if let Some(val) = attrs.get(field) {
+                out.insert(field.into(), val.clone());
+            }
+        }
+        if let Some(inner) = attrs.get("attributes") {
+            for &field in &["title", "service", "status"] {
+                if let Some(val) = inner.get(field) {
+                    out.insert(field.into(), val.clone());
+                }
+            }
+        }
+    }
+    Value::Object(out)
+}
+
+/// Dashboard list: the API wraps items in `{"dashboards": [...]}`. Extract the
+/// array so token-budget compression can operate on individual dashboard objects.
+pub fn flatten_dashboards(v: &Value) -> Value {
+    v.get("dashboards").cloned().unwrap_or_else(|| v.clone())
+}
+
+/// Metrics query: transform raw timeseries into a compact summary with computed
+/// min/max/avg/trend and ~10 sampled values instead of 180 raw data points.
+pub fn flatten_metric(v: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    if let Some(q) = v.get("query") {
+        out.insert("query".into(), q.clone());
+    }
+    if let Some(ms) = v.get("from_date").and_then(|d| d.as_i64()) {
+        out.insert("from".into(), Value::String(ms_to_iso(ms)));
+    }
+    if let Some(ms) = v.get("to_date").and_then(|d| d.as_i64()) {
+        out.insert("to".into(), Value::String(ms_to_iso(ms)));
+    }
+    if let Some(series_arr) = v.get("series").and_then(|s| s.as_array()) {
+        let summaries: Vec<Value> = series_arr.iter().map(summarise_series).collect();
+        out.insert(
+            "series".into(),
+            if summaries.len() == 1 {
+                summaries.into_iter().next().unwrap()
+            } else {
+                Value::Array(summaries)
+            },
+        );
+    }
+    Value::Object(out)
+}
+
+fn summarise_series(series: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    for &field in &["metric", "expression", "scope"] {
+        if let Some(v) = series.get(field) {
+            out.insert(field.into(), v.clone());
+        }
+    }
+    if let Some(unit) = series
+        .get("unit")
+        .and_then(|u| u.as_array())
+        .and_then(|a| a.first())
+        .and_then(|u| u.get("short_name"))
+    {
+        out.insert("unit".into(), unit.clone());
+    }
+    if let Some(points) = series.get("pointlist").and_then(|p| p.as_array()) {
+        let vals: Vec<f64> = points
+            .iter()
+            .filter_map(|p| p.as_array())
+            .filter_map(|p| p.get(1))
+            .filter_map(|v| v.as_f64())
+            .filter(|v| v.is_finite())
+            .collect();
+        if !vals.is_empty() {
+            let min = vals.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let avg = vals.iter().sum::<f64>() / vals.len() as f64;
+            let window = (vals.len() / 10).max(1);
+            let first_avg = vals[..window].iter().sum::<f64>() / window as f64;
+            let last_avg = vals[vals.len() - window..].iter().sum::<f64>() / window as f64;
+            let trend = if last_avg > first_avg * 1.05 {
+                "rising"
+            } else if last_avg < first_avg * 0.95 {
+                "falling"
+            } else {
+                "stable"
+            };
+            let n = 10.min(vals.len());
+            let step = vals.len() / n;
+            let sampled: Vec<f64> = (0..n).map(|i| round2(vals[i * step])).collect();
+            out.insert("count".into(), Value::Number(vals.len().into()));
+            out.insert("min".into(), json_f64(round2(min)));
+            out.insert("max".into(), json_f64(round2(max)));
+            out.insert("avg".into(), json_f64(round2(avg)));
+            out.insert("trend".into(), Value::String(trend.into()));
+            out.insert(
+                "sampled".into(),
+                Value::Array(sampled.into_iter().map(json_f64).collect()),
+            );
+        }
+    }
+    Value::Object(out)
+}
+
+fn round2(v: f64) -> f64 {
+    (v * 100.0).round() / 100.0
+}
+
+fn json_f64(v: f64) -> Value {
+    serde_json::Number::from_f64(v)
+        .map(Value::Number)
+        .unwrap_or(Value::String(format!("{v:.2}")))
+}
+
+fn ms_to_iso(ms: i64) -> String {
+    Utc.timestamp_millis_opt(ms)
+        .single()
+        .map(|dt: DateTime<Utc>| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        .unwrap_or_else(|| format!("unix:{ms}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -575,7 +769,8 @@ mod tests {
         assert!(weights_for_command("traces aggregate").is_some());
         assert!(weights_for_command("incidents list").is_some());
         assert!(weights_for_command("events search").is_some());
-        assert!(weights_for_command("dashboards list").is_none());
+        assert!(weights_for_command("dashboards list").is_some());
+        assert!(weights_for_command("metrics query").is_some());
     }
 
     #[test]

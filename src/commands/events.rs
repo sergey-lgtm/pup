@@ -96,7 +96,7 @@ pub async fn search(
         .search_events(params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to search events: {e:?}"))?;
-    formatter::output(cfg, &resp)
+    formatter::output_cmd(cfg, &resp, "events search")
 }
 
 #[cfg(target_arch = "wasm32")]
