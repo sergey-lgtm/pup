@@ -58,13 +58,15 @@ pub static MONITOR_WEIGHTS: FieldWeights = FieldWeights {
         ("query", 0.85),
         ("tags", 0.75),
         ("message", 0.70),
-        ("creator", 0.50),
-        ("notifications", 0.45),
+        ("notifications", 0.50),
         ("modified", 0.40),
-        ("created_at", 0.20),
-        ("created", 0.15),
+        // creator is expensive (~30 tokens for the full object) and rarely needed for triage
+        ("creator", 0.0),
+        // created_at (Unix ms) duplicates `created` (ISO); both superseded by `modified`
+        ("created_at", 0.0),
+        ("created", 0.0),
         ("overall_state_modified", 0.10),
-        ("draft_status", 0.10),
+        ("draft_status", 0.05),
         // expensive objects with low diagnostic value for triage
         ("options", 0.05),
         ("org_id", 0.05),
@@ -375,8 +377,8 @@ pub fn flatten_dashboards(v: &Value) -> Value {
     v.get("dashboards").cloned().unwrap_or_else(|| v.clone())
 }
 
-/// Metrics query: transform raw timeseries into a compact summary with computed
-/// min/max/avg/trend and ~10 sampled values instead of 180 raw data points.
+/// Metrics query: transform raw timeseries into overall_stats + 20 time-binned buckets
+/// (matching MCP's format), trend indicator, and a human-readable Metrics Explorer URL.
 pub fn flatten_metric(v: &Value) -> Value {
     let mut out = serde_json::Map::new();
     if let Some(q) = v.get("query") {
@@ -398,6 +400,20 @@ pub fn flatten_metric(v: &Value) -> Value {
                 Value::Array(summaries)
             },
         );
+        // Derive a simple Metrics Explorer URL from the first series' metric name.
+        if let Some(metric) = series_arr
+            .first()
+            .and_then(|s| s.get("metric"))
+            .and_then(|m| m.as_str())
+        {
+            out.insert(
+                "url".into(),
+                Value::String(format!(
+                    "https://app.datadoghq.com/metric/explorer?live=false&metric={}",
+                    metric
+                )),
+            );
+        }
     }
     Value::Object(out)
 }
@@ -418,17 +434,37 @@ fn summarise_series(series: &Value) -> Value {
         out.insert("unit".into(), unit.clone());
     }
     if let Some(points) = series.get("pointlist").and_then(|p| p.as_array()) {
-        let vals: Vec<f64> = points
+        // Extract (timestamp_ms, value) pairs, keeping only finite values.
+        let pairs: Vec<(i64, f64)> = points
             .iter()
             .filter_map(|p| p.as_array())
-            .filter_map(|p| p.get(1))
-            .filter_map(|v| v.as_f64())
-            .filter(|v| v.is_finite())
+            .filter_map(|p| {
+                let ts = p.first()?.as_f64()? as i64;
+                let val = p.get(1)?.as_f64()?;
+                val.is_finite().then_some((ts, val))
+            })
             .collect();
-        if !vals.is_empty() {
+
+        if !pairs.is_empty() {
+            let vals: Vec<f64> = pairs.iter().map(|(_, v)| *v).collect();
             let min = vals.iter().cloned().fold(f64::INFINITY, f64::min);
             let max = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            let avg = vals.iter().sum::<f64>() / vals.len() as f64;
+            let sum: f64 = vals.iter().sum();
+            let avg = sum / vals.len() as f64;
+
+            // overall_stats mirrors MCP's format.
+            out.insert(
+                "overall_stats".into(),
+                serde_json::json!({
+                    "count": vals.len(),
+                    "min": round2(min),
+                    "max": round2(max),
+                    "avg": round2(avg),
+                    "sum": round2(sum),
+                }),
+            );
+
+            // Trend: compare first vs last 10% of readings.
             let window = (vals.len() / 10).max(1);
             let first_avg = vals[..window].iter().sum::<f64>() / window as f64;
             let last_avg = vals[vals.len() - window..].iter().sum::<f64>() / window as f64;
@@ -439,18 +475,30 @@ fn summarise_series(series: &Value) -> Value {
             } else {
                 "stable"
             };
-            let n = 10.min(vals.len());
-            let step = vals.len() / n;
-            let sampled: Vec<f64> = (0..n).map(|i| round2(vals[i * step])).collect();
-            out.insert("count".into(), Value::Number(vals.len().into()));
-            out.insert("min".into(), json_f64(round2(min)));
-            out.insert("max".into(), json_f64(round2(max)));
-            out.insert("avg".into(), json_f64(round2(avg)));
             out.insert("trend".into(), Value::String(trend.into()));
-            out.insert(
-                "sampled".into(),
-                Value::Array(sampled.into_iter().map(json_f64).collect()),
-            );
+
+            // 20 ordered time bins with ISO start_time — matches MCP's binned format.
+            let n_bins = 20.min(pairs.len());
+            let bin_size = pairs.len().div_ceil(n_bins);
+            let bins: Vec<Value> = (0..n_bins)
+                .map(|i| {
+                    let start = i * bin_size;
+                    let end = ((i + 1) * bin_size).min(pairs.len());
+                    let (start_ts, _) = pairs[start];
+                    let bin_vals: Vec<f64> = pairs[start..end].iter().map(|(_, v)| *v).collect();
+                    let b_min = bin_vals.iter().cloned().fold(f64::INFINITY, f64::min);
+                    let b_max = bin_vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                    let b_avg = bin_vals.iter().sum::<f64>() / bin_vals.len() as f64;
+                    serde_json::json!({
+                        "start_time": ms_to_iso(start_ts),
+                        "count": bin_vals.len(),
+                        "min": round2(b_min),
+                        "max": round2(b_max),
+                        "avg": round2(b_avg),
+                    })
+                })
+                .collect();
+            out.insert("binned".into(), Value::Array(bins));
         }
     }
     Value::Object(out)
@@ -458,12 +506,6 @@ fn summarise_series(series: &Value) -> Value {
 
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
-}
-
-fn json_f64(v: f64) -> Value {
-    serde_json::Number::from_f64(v)
-        .map(Value::Number)
-        .unwrap_or(Value::String(format!("{v:.2}")))
 }
 
 fn ms_to_iso(ms: i64) -> String {
@@ -752,6 +794,10 @@ mod tests {
         assert_eq!(MONITOR_WEIGHTS.importance("overall_state"), 1.0);
         assert_eq!(MONITOR_WEIGHTS.importance("options"), 0.05);
         assert_eq!(MONITOR_WEIGHTS.importance("matching_downtimes"), 0.02);
+        // creator and timestamps are dropped in compact mode
+        assert_eq!(MONITOR_WEIGHTS.importance("creator"), 0.0);
+        assert_eq!(MONITOR_WEIGHTS.importance("created_at"), 0.0);
+        assert_eq!(MONITOR_WEIGHTS.importance("created"), 0.0);
     }
 
     #[test]
