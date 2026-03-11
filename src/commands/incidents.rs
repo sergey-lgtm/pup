@@ -3,11 +3,11 @@ use anyhow::{bail, Result};
 use datadog_api_client::datadogV2::api_incidents::{
     CreateGlobalIncidentHandleOptionalParams, GetIncidentOptionalParams,
     ImportIncidentOptionalParams, IncidentsAPI, ListGlobalIncidentHandlesOptionalParams,
-    ListIncidentAttachmentsOptionalParams, ListIncidentsOptionalParams,
+    ListIncidentAttachmentsOptionalParams, SearchIncidentsOptionalParams,
     UpdateGlobalIncidentHandleOptionalParams,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use datadog_api_client::datadogV2::model::IncidentImportRequest;
+use datadog_api_client::datadogV2::model::{IncidentImportRequest, IncidentSearchSortOrder};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::client;
@@ -35,9 +35,11 @@ fn make_api(cfg: &Config) -> IncidentsAPI {
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn list(cfg: &Config, limit: i64) -> Result<()> {
     let api = make_api(cfg);
-    let params = ListIncidentsOptionalParams::default().page_size(limit);
+    let params = SearchIncidentsOptionalParams::default()
+        .page_size(limit)
+        .sort(IncidentSearchSortOrder::CREATED_DESCENDING);
     let resp = api
-        .list_incidents(params)
+        .search_incidents("state:active".to_string(), params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to list incidents: {:?}", e))?;
     formatter::output(cfg, &resp)?;
@@ -46,8 +48,12 @@ pub async fn list(cfg: &Config, limit: i64) -> Result<()> {
 
 #[cfg(target_arch = "wasm32")]
 pub async fn list(cfg: &Config, limit: i64) -> Result<()> {
-    let query_params = vec![("page[size]", limit.to_string())];
-    let data = crate::api::get(cfg, "/api/v2/incidents", &query_params).await?;
+    let query_params = vec![
+        ("filter[query]", "state:active".to_string()),
+        ("sort", "-created".to_string()),
+        ("page[size]", limit.to_string()),
+    ];
+    let data = crate::api::get(cfg, "/api/v2/incidents/search", &query_params).await?;
     crate::formatter::output(cfg, &data)
 }
 
