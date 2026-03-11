@@ -264,6 +264,7 @@ pub fn parse_scopes(s: &str) -> Vec<String> {
 }
 
 /// Try to load a valid (non-expired) access token from keychain/file storage.
+/// If the token is expired, attempts an automatic refresh using the stored refresh token.
 /// Returns None silently on any error — callers fall through to other auth methods.
 #[cfg(all(not(feature = "browser"), not(target_arch = "wasm32")))]
 pub fn load_token_from_storage(site: &str, org: Option<&str>) -> Option<String> {
@@ -271,10 +272,64 @@ pub fn load_token_from_storage(site: &str, org: Option<&str>) -> Option<String> 
     let lock = guard.lock().ok()?;
     let store = lock.as_ref()?;
     let tokens = store.load_tokens(site, org).ok()??;
-    if tokens.is_expired() {
-        return None;
+    let creds = store.load_client_credentials(site).ok().flatten();
+
+    drop(lock);
+
+    let result = resolve_token(tokens, creds.as_ref(), |refresh_token, creds| {
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let dcr_client = crate::auth::dcr::DcrClient::new(site);
+                dcr_client.refresh_token(refresh_token, creds).await.ok()
+            })
+        })
+    });
+
+    match result {
+        ResolvedToken::Valid(access_token) => Some(access_token),
+        ResolvedToken::Refreshed(new_tokens) => {
+            let guard = crate::auth::storage::get_storage().ok()?;
+            let lock = guard.lock().ok()?;
+            let store = lock.as_ref()?;
+            store.save_tokens(site, org, &new_tokens).ok()?;
+            eprintln!("🔄 Access token refreshed automatically.");
+            Some(new_tokens.access_token)
+        }
+        ResolvedToken::Expired => None,
     }
-    Some(tokens.access_token)
+}
+
+enum ResolvedToken {
+    Valid(String),
+    Refreshed(crate::auth::types::TokenSet),
+    Expired,
+}
+
+fn resolve_token<F>(
+    tokens: crate::auth::types::TokenSet,
+    creds: Option<&crate::auth::types::ClientCredentials>,
+    refresh_fn: F,
+) -> ResolvedToken
+where
+    F: FnOnce(&str, &crate::auth::types::ClientCredentials) -> Option<crate::auth::types::TokenSet>,
+{
+    if !tokens.is_expired() {
+        return ResolvedToken::Valid(tokens.access_token);
+    }
+
+    if tokens.refresh_token.is_empty() {
+        return ResolvedToken::Expired;
+    }
+
+    let creds = match creds {
+        Some(c) => c,
+        None => return ResolvedToken::Expired,
+    };
+
+    match refresh_fn(&tokens.refresh_token, creds) {
+        Some(new_tokens) => ResolvedToken::Refreshed(new_tokens),
+        None => ResolvedToken::Expired,
+    }
 }
 
 #[cfg(not(feature = "browser"))]
@@ -625,5 +680,114 @@ profiles:
         let yaml = "scopes: dashboards_read,monitors_read\n";
         let fc: FileConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(fc.scopes.as_deref(), Some("dashboards_read,monitors_read"));
+    }
+
+    // --- resolve_token (auto-refresh logic) ---------------------------------
+
+    use crate::auth::types::{ClientCredentials, TokenSet};
+
+    fn make_token_set(issued_ago_secs: i64, expires_in: i64, refresh: &str) -> TokenSet {
+        TokenSet {
+            access_token: "old-access-token".into(),
+            refresh_token: refresh.into(),
+            token_type: "Bearer".into(),
+            expires_in,
+            issued_at: chrono::Utc::now().timestamp() - issued_ago_secs,
+            scope: String::new(),
+            client_id: String::new(),
+        }
+    }
+
+    fn make_creds() -> ClientCredentials {
+        ClientCredentials {
+            client_id: "test-client-id".into(),
+            client_name: "test-client".into(),
+            redirect_uris: vec![],
+            registered_at: 0,
+            site: "datadoghq.com".into(),
+        }
+    }
+
+    fn make_refreshed_token_set() -> TokenSet {
+        TokenSet {
+            access_token: "fresh-access-token".into(),
+            refresh_token: "fresh-refresh-token".into(),
+            token_type: "Bearer".into(),
+            expires_in: 3600,
+            issued_at: chrono::Utc::now().timestamp(),
+            scope: String::new(),
+            client_id: "test-client-id".into(),
+        }
+    }
+
+    #[test]
+    fn test_resolve_token_valid_token() {
+        let tokens = make_token_set(0, 3600, "refresh");
+        let creds = make_creds();
+        let result = super::resolve_token(tokens, Some(&creds), |_, _| {
+            panic!("refresh_fn should not be called for valid token");
+        });
+        match result {
+            super::ResolvedToken::Valid(t) => assert_eq!(t, "old-access-token"),
+            _ => panic!("expected Valid"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_token_expired_no_refresh_token() {
+        let tokens = make_token_set(7200, 3600, "");
+        let creds = make_creds();
+        let result = super::resolve_token(tokens, Some(&creds), |_, _| {
+            panic!("refresh_fn should not be called without refresh token");
+        });
+        assert!(matches!(result, super::ResolvedToken::Expired));
+    }
+
+    #[test]
+    fn test_resolve_token_expired_no_client_creds() {
+        let tokens = make_token_set(7200, 3600, "refresh");
+        let result = super::resolve_token(tokens, None, |_, _| {
+            panic!("refresh_fn should not be called without client credentials");
+        });
+        assert!(matches!(result, super::ResolvedToken::Expired));
+    }
+
+    #[test]
+    fn test_resolve_token_expired_refresh_fails() {
+        let tokens = make_token_set(7200, 3600, "refresh");
+        let creds = make_creds();
+        let result = super::resolve_token(tokens, Some(&creds), |_, _| None);
+        assert!(matches!(result, super::ResolvedToken::Expired));
+    }
+
+    #[test]
+    fn test_resolve_token_expired_refresh_succeeds() {
+        let tokens = make_token_set(7200, 3600, "refresh");
+        let creds = make_creds();
+        let result = super::resolve_token(tokens, Some(&creds), |rt, c| {
+            assert_eq!(rt, "refresh");
+            assert_eq!(c.client_id, "test-client-id");
+            Some(make_refreshed_token_set())
+        });
+        match result {
+            super::ResolvedToken::Refreshed(t) => {
+                assert_eq!(t.access_token, "fresh-access-token");
+                assert_eq!(t.refresh_token, "fresh-refresh-token");
+            }
+            _ => panic!("expected Refreshed"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_token_near_expiry_triggers_refresh() {
+        let tokens = make_token_set(3400, 3600, "refresh"); // 200s left < 300s buffer
+        let creds = make_creds();
+        let result =
+            super::resolve_token(
+                tokens,
+                Some(&creds),
+                |_, _| Some(make_refreshed_token_set()),
+            );
+        assert!(matches!(result, super::ResolvedToken::Refreshed(_)));
     }
 }
