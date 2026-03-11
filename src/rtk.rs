@@ -243,7 +243,10 @@ pub fn flatten_for_command(command: &str) -> Option<fn(&Value) -> Value> {
     match command {
         "logs search" => Some(flatten_log),
         "traces search" | "traces aggregate" => Some(flatten_span),
-        "incidents list" | "incidents get" => Some(flatten_incident),
+        // search_incidents wraps each incident inside an extra `data` envelope;
+        // flatten_incidents_search unwraps that and applies flatten_incident to each.
+        "incidents list" => Some(flatten_incidents_search),
+        "incidents get" => Some(flatten_incident),
         "events search" | "events list" => Some(flatten_event),
         "dashboards list" => Some(flatten_dashboards),
         "metrics query" => Some(flatten_metric),
@@ -316,6 +319,26 @@ pub fn flatten_span(v: &Value) -> Value {
 
 /// Incident (v2 API): lift attributes.{title, severity, state, created, commander,
 /// customer_impacted, resolved} to top level. Drops the verbose `fields` schema bag.
+/// `search_incidents` response: the incidents live at
+/// `effective_data.attributes.incidents[n].data` (an extra wrapper vs list_incidents).
+/// Extract the array and apply `flatten_incident` to each `IncidentResponseData`.
+pub fn flatten_incidents_search(v: &Value) -> Value {
+    let incidents = v
+        .get("attributes")
+        .and_then(|a| a.get("incidents"))
+        .and_then(|i| i.as_array());
+
+    match incidents {
+        Some(arr) => Value::Array(
+            arr.iter()
+                .filter_map(|item| item.get("data"))
+                .map(flatten_incident)
+                .collect(),
+        ),
+        None => Value::Array(vec![]),
+    }
+}
+
 pub fn flatten_incident(v: &Value) -> Value {
     let mut out = serde_json::Map::new();
     if let Some(id) = v.get("id") {
