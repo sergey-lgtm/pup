@@ -3640,7 +3640,10 @@ enum CicdFlakyTestActions {
         limit: i64,
         #[arg(long, default_value_t = false, help = "Include status history")]
         include_history: bool,
-        #[arg(long, help = "Sort order (fqn, -fqn)")]
+        #[arg(
+            long,
+            help = "Sort order (fqn, -fqn, first_flaked, -first_flaked, last_flaked, -last_flaked, failure_rate, -failure_rate, pipelines_failed, -pipelines_failed, pipelines_duration_lost, -pipelines_duration_lost)"
+        )]
         sort: Option<String>,
     },
     /// Update flaky tests
@@ -6569,8 +6572,22 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                 },
                 CicdActions::FlakyTests { action } => match action {
-                    CicdFlakyTestActions::Search { query, .. } => {
-                        commands::cicd::flaky_tests_search(&cfg, query).await?;
+                    CicdFlakyTestActions::Search {
+                        query,
+                        cursor,
+                        limit,
+                        include_history,
+                        sort,
+                    } => {
+                        commands::cicd::flaky_tests_search(
+                            &cfg,
+                            query,
+                            cursor,
+                            limit,
+                            include_history,
+                            sort,
+                        )
+                        .await?;
                     }
                     CicdFlakyTestActions::Update { file } => {
                         commands::cicd::flaky_tests_update(&cfg, &file).await?;

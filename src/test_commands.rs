@@ -1372,6 +1372,23 @@ async fn test_cicd_tests_list() {
     let _ = crate::commands::cicd::tests_list(&cfg, None, "1h".into(), "now".into(), 10).await;
     cleanup_env();
 }
+#[tokio::test]
+async fn test_cicd_flaky_tests_search() {
+    let _lock = lock_env();
+    let mut s = mockito::Server::new_async().await;
+    let cfg = test_config(&s.url());
+    mock_all(&mut s, r#"{"data": []}"#).await;
+    let _ = crate::commands::cicd::flaky_tests_search(
+        &cfg,
+        Some("@test.service:my-service".into()),
+        None,
+        50,
+        false,
+        Some("-last_flaked".into()),
+    )
+    .await;
+    cleanup_env();
+}
 
 // --- Fleet ---
 #[tokio::test]

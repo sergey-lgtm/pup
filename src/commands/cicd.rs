@@ -467,7 +467,14 @@ pub async fn dora_patch_deployment(cfg: &Config, deployment_id: &str, file: &str
 // ---- Flaky Tests ----
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn flaky_tests_search(cfg: &Config, query: Option<String>) -> Result<()> {
+pub async fn flaky_tests_search(
+    cfg: &Config,
+    query: Option<String>,
+    cursor: Option<String>,
+    limit: i64,
+    include_history: bool,
+    sort: Option<String>,
+) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
     let api = match client::make_bearer_client(cfg) {
         Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
@@ -475,13 +482,39 @@ pub async fn flaky_tests_search(cfg: &Config, query: Option<String>) -> Result<(
     };
 
     use datadog_api_client::datadogV2::model::{
-        FlakyTestsSearchFilter, FlakyTestsSearchRequestAttributes, FlakyTestsSearchRequestData,
-        FlakyTestsSearchRequestDataType,
+        FlakyTestsSearchFilter, FlakyTestsSearchPageOptions, FlakyTestsSearchRequestAttributes,
+        FlakyTestsSearchRequestData, FlakyTestsSearchRequestDataType, FlakyTestsSearchSort,
     };
     let mut attrs = FlakyTestsSearchRequestAttributes::new();
     if let Some(q) = query {
         let filter = FlakyTestsSearchFilter::new().query(q);
         attrs = attrs.filter(filter);
+    }
+    let mut page_opts = FlakyTestsSearchPageOptions::new().limit(limit);
+    if let Some(c) = cursor {
+        page_opts = page_opts.cursor(c);
+    }
+    attrs = attrs.page(page_opts);
+    if include_history {
+        attrs = attrs.include_history(true);
+    }
+    if let Some(s) = sort {
+        let sort_val = match s.as_str() {
+            "fqn" => FlakyTestsSearchSort::FQN_ASCENDING,
+            "-fqn" => FlakyTestsSearchSort::FQN_DESCENDING,
+            "first_flaked" => FlakyTestsSearchSort::FIRST_FLAKED_ASCENDING,
+            "-first_flaked" => FlakyTestsSearchSort::FIRST_FLAKED_DESCENDING,
+            "last_flaked" => FlakyTestsSearchSort::LAST_FLAKED_ASCENDING,
+            "-last_flaked" => FlakyTestsSearchSort::LAST_FLAKED_DESCENDING,
+            "failure_rate" => FlakyTestsSearchSort::FAILURE_RATE_ASCENDING,
+            "-failure_rate" => FlakyTestsSearchSort::FAILURE_RATE_DESCENDING,
+            "pipelines_failed" => FlakyTestsSearchSort::PIPELINES_FAILED_ASCENDING,
+            "-pipelines_failed" => FlakyTestsSearchSort::PIPELINES_FAILED_DESCENDING,
+            "pipelines_duration_lost" => FlakyTestsSearchSort::PIPELINES_DURATION_LOST_ASCENDING,
+            "-pipelines_duration_lost" => FlakyTestsSearchSort::PIPELINES_DURATION_LOST_DESCENDING,
+            _ => anyhow::bail!("invalid sort value: {s}. Valid values: fqn, -fqn, first_flaked, -first_flaked, last_flaked, -last_flaked, failure_rate, -failure_rate, pipelines_failed, -pipelines_failed, pipelines_duration_lost, -pipelines_duration_lost"),
+        };
+        attrs = attrs.sort(sort_val);
     }
     let data = FlakyTestsSearchRequestData::new()
         .attributes(attrs)
@@ -497,10 +530,27 @@ pub async fn flaky_tests_search(cfg: &Config, query: Option<String>) -> Result<(
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn flaky_tests_search(cfg: &Config, query: Option<String>) -> Result<()> {
+pub async fn flaky_tests_search(
+    cfg: &Config,
+    query: Option<String>,
+    cursor: Option<String>,
+    limit: i64,
+    include_history: bool,
+    sort: Option<String>,
+) -> Result<()> {
     let mut attrs = serde_json::json!({});
     if let Some(q) = query {
-        attrs = serde_json::json!({ "filter": { "query": q } });
+        attrs["filter"] = serde_json::json!({ "query": q });
+    }
+    attrs["page"] = serde_json::json!({ "limit": limit });
+    if let Some(c) = cursor {
+        attrs["page"]["cursor"] = serde_json::Value::String(c);
+    }
+    if include_history {
+        attrs["include_history"] = serde_json::Value::Bool(true);
+    }
+    if let Some(s) = sort {
+        attrs["sort"] = serde_json::Value::String(s);
     }
     let body = serde_json::json!({
         "data": {
