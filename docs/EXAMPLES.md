@@ -382,6 +382,58 @@ pup synthetics tests get "test-id"
 pup synthetics locations list
 ```
 
+## Workflows
+
+### Get a Workflow
+```bash
+pup workflows get <workflow-id>
+```
+
+### Create a Workflow
+```bash
+pup workflows create --file=workflow.json
+```
+
+### Update a Workflow
+```bash
+pup workflows update <workflow-id> --file=workflow.json
+```
+
+### Delete a Workflow
+```bash
+pup workflows delete <workflow-id>
+```
+
+### Execute a Workflow
+```bash
+# Run with inline payload (requires DD_API_KEY + DD_APP_KEY)
+pup workflows run <workflow-id> --payload '{"key": "value"}'
+
+# Run with payload from file
+pup workflows run <workflow-id> --payload-file=params.json
+
+# Run and wait for completion (default timeout: 5m)
+pup workflows run <workflow-id> --wait
+
+# Run with custom timeout
+pup workflows run <workflow-id> --wait --timeout 2m
+```
+
+### Manage Workflow Instances
+```bash
+# List recent executions
+pup workflows instances list <workflow-id>
+
+# List with pagination
+pup workflows instances list <workflow-id> --limit=20 --page=2
+
+# Get instance details
+pup workflows instances get <workflow-id> <instance-id>
+
+# Cancel a running instance
+pup workflows instances cancel <workflow-id> <instance-id>
+```
+
 ## Output Formatting
 
 ### JSON Output (Default)

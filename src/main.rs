@@ -1837,6 +1837,41 @@ enum Commands {
         #[command(subcommand)]
         action: UserActions,
     },
+    /// Manage Datadog workflows
+    ///
+    /// Create, update, delete, and execute Datadog Workflow Automation workflows.
+    ///
+    /// CAPABILITIES:
+    ///   • Get workflow details
+    ///   • Create, update, and delete workflows
+    ///   • Execute workflows via API trigger (requires DD_API_KEY + DD_APP_KEY)
+    ///   • List, inspect, and cancel workflow instances (executions)
+    ///
+    /// EXAMPLES:
+    ///   # Get a workflow
+    ///   pup workflows get <workflow-id>
+    ///
+    ///   # Execute a workflow via API trigger
+    ///   pup workflows run <workflow-id> --payload '{"key": "value"}'
+    ///
+    ///   # Execute and wait for completion
+    ///   pup workflows run <workflow-id> --wait --timeout 2m
+    ///
+    ///   # List recent executions
+    ///   pup workflows instances list <workflow-id>
+    ///
+    ///   # Cancel a running execution
+    ///   pup workflows instances cancel <workflow-id> <instance-id>
+    ///
+    /// AUTHENTICATION:
+    ///   Most commands accept either OAuth2 or API keys.
+    ///   The 'run' command requires DD_API_KEY + DD_APP_KEY (OAuth is not supported
+    ///   for API trigger execution).
+    #[command(verbatim_doc_comment)]
+    Workflows {
+        #[command(subcommand)]
+        action: WorkflowActions,
+    },
     /// Print version information
     Version,
 }
@@ -2506,6 +2541,73 @@ enum UserActions {
 enum UserRoleActions {
     /// List roles
     List,
+}
+
+// ---- Workflows ----
+#[derive(Subcommand)]
+enum WorkflowActions {
+    /// Get a workflow by ID
+    Get { workflow_id: String },
+    /// Create a workflow from a JSON file
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update a workflow from a JSON file
+    Update {
+        workflow_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete a workflow
+    Delete { workflow_id: String },
+    /// Execute a workflow via API trigger (requires DD_API_KEY + DD_APP_KEY)
+    ///
+    /// The workflow must have an API trigger configured.
+    /// OAuth tokens are not supported — this command requires API key authentication.
+    #[command(verbatim_doc_comment)]
+    Run {
+        workflow_id: String,
+        #[arg(long, help = "JSON payload for workflow input parameters")]
+        payload: Option<String>,
+        #[arg(long, help = "Path to a JSON file with input parameters")]
+        payload_file: Option<String>,
+        #[arg(long, help = "Wait for the workflow to complete before returning")]
+        wait: bool,
+        #[arg(
+            long,
+            default_value = "5m",
+            help = "Timeout when --wait is set (e.g. 30s, 5m, 1h)"
+        )]
+        timeout: String,
+    },
+    /// Manage workflow instances (executions)
+    Instances {
+        #[command(subcommand)]
+        action: WorkflowInstanceActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkflowInstanceActions {
+    /// List instances of a workflow
+    List {
+        workflow_id: String,
+        #[arg(long, default_value_t = 10, help = "Page size (max 100)")]
+        limit: i64,
+        #[arg(long, default_value_t = 0, help = "Page number")]
+        page: i64,
+    },
+    /// Get a specific workflow instance
+    Get {
+        workflow_id: String,
+        instance_id: String,
+    },
+    /// Cancel a running workflow instance
+    Cancel {
+        workflow_id: String,
+        instance_id: String,
+    },
 }
 
 // ---- Infrastructure ----
@@ -7317,6 +7419,63 @@ async fn main_inner() -> anyhow::Result<()> {
             AuthActions::Refresh => commands::auth::refresh(&cfg).await?,
             AuthActions::List => commands::auth::list(&cfg)?,
         },
+        // --- Workflows ---
+        Commands::Workflows { action } => {
+            cfg.validate_auth()?;
+            match action {
+                WorkflowActions::Get { workflow_id } => {
+                    commands::workflows::get(&cfg, &workflow_id).await?;
+                }
+                WorkflowActions::Create { file } => {
+                    commands::workflows::create(&cfg, &file).await?;
+                }
+                WorkflowActions::Update { workflow_id, file } => {
+                    commands::workflows::update(&cfg, &workflow_id, &file).await?;
+                }
+                WorkflowActions::Delete { workflow_id } => {
+                    commands::workflows::delete(&cfg, &workflow_id).await?;
+                }
+                WorkflowActions::Run {
+                    workflow_id,
+                    payload,
+                    payload_file,
+                    wait,
+                    timeout,
+                } => {
+                    commands::workflows::run(
+                        &cfg,
+                        &workflow_id,
+                        payload,
+                        payload_file,
+                        wait,
+                        &timeout,
+                    )
+                    .await?;
+                }
+                WorkflowActions::Instances { action } => match action {
+                    WorkflowInstanceActions::List {
+                        workflow_id,
+                        limit,
+                        page,
+                    } => {
+                        commands::workflows::instance_list(&cfg, &workflow_id, limit, page).await?;
+                    }
+                    WorkflowInstanceActions::Get {
+                        workflow_id,
+                        instance_id,
+                    } => {
+                        commands::workflows::instance_get(&cfg, &workflow_id, &instance_id).await?;
+                    }
+                    WorkflowInstanceActions::Cancel {
+                        workflow_id,
+                        instance_id,
+                    } => {
+                        commands::workflows::instance_cancel(&cfg, &workflow_id, &instance_id)
+                            .await?;
+                    }
+                },
+            }
+        }
         // --- Utility ---
         Commands::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "pup", &mut std::io::stdout());
