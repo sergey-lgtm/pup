@@ -345,3 +345,58 @@ fn parse_duration(input: &str) -> Result<std::time::Duration> {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_duration_seconds() {
+        let d = parse_duration("30s").unwrap();
+        assert_eq!(d, std::time::Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_parse_duration_minutes() {
+        let d = parse_duration("5m").unwrap();
+        assert_eq!(d, std::time::Duration::from_secs(300));
+    }
+
+    #[test]
+    fn test_parse_duration_hours() {
+        let d = parse_duration("1h").unwrap();
+        assert_eq!(d, std::time::Duration::from_secs(3600));
+    }
+
+    #[test]
+    fn test_parse_duration_case_insensitive() {
+        let d = parse_duration("2M").unwrap();
+        assert_eq!(d, std::time::Duration::from_secs(120));
+    }
+
+    #[test]
+    fn test_parse_duration_whitespace_trimmed() {
+        let d = parse_duration("  10s  ").unwrap();
+        assert_eq!(d, std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_parse_duration_invalid_unit() {
+        assert!(parse_duration("5x").is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_no_unit() {
+        assert!(parse_duration("100").is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_empty() {
+        assert!(parse_duration("").is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_garbage() {
+        assert!(parse_duration("abc").is_err());
+    }
+}
