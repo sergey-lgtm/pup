@@ -72,7 +72,7 @@ pup/
 │       ├── mod.rs         # Command registration
 │       ├── metrics.rs     # Metrics domain
 │       ├── monitors.rs    # Monitors domain
-│       └── ...            # ~47 command modules
+│       └── ...            # 53 command modules
 ├── Cargo.toml             # Dependencies and metadata
 ├── tests/                 # Integration tests
 │   ├── compare/           # Output comparison tests

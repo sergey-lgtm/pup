@@ -41,7 +41,7 @@ pup metrics query --query="avg:system.cpu.user{*}"   # Track the metrics tail
 
 <!-- Last updated: 2026-02-22 | API Client: datadog-api-client-rust v0.27 -->
 
-Pup implements **45 of 85+ available Datadog APIs** (53% coverage) with **300+ subcommands** across **42 command groups**.
+Pup implements **45 of 85+ available Datadog APIs** (53% coverage) with **300+ subcommands** across **49 command groups**.
 
 See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 

@@ -1,6 +1,6 @@
 ---
 name: pup
-description: Datadog API CLI with 48 command groups, 283+ subcommands. Skills and domain agents for monitoring, logs, APM, security, and infrastructure.
+description: Datadog API CLI with 49 command groups, 300+ subcommands. Skills and domain agents for monitoring, logs, APM, security, and infrastructure.
 metadata:
   version: "0.25.0"
   author:
@@ -12,7 +12,7 @@ metadata:
 
 # Datadog Pup CLI
 
-Rust-based CLI for Datadog APIs. 48 command groups, 283+ subcommands across 37 API domains.
+Rust-based CLI for Datadog APIs. 49 command groups, 300+ subcommands across 53 command modules.
 
 ## Install Skills
 
