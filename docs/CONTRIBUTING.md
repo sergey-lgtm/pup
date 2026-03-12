@@ -4,26 +4,40 @@ Guidelines for contributing to Pup.
 
 ## Getting Started
 
+Pup uses the **fork and pull** model: contributors push changes to their
+personal fork and open pull requests to bring those changes into this
+repository. Direct pushes to `datadog-labs/pup` are not permitted.
+
+### 1. Fork and clone
+
 ```bash
-# Clone repository
-git clone https://github.com/datadog-labs/pup.git
+# Fork via GitHub UI, then clone your fork
+git clone https://github.com/<your-username>/pup.git
 cd pup
 
-# Build
+# Add upstream remote and disable accidental pushes to it
+git remote add upstream https://github.com/datadog-labs/pup.git
+git remote set-url --push upstream no_push
+```
+
+### 2. Build and verify
+
+```bash
 cargo build
-
-# Run tests
 cargo test
-
-# Run with local changes
 cargo run -- <command>
 ```
 
 ## Development Workflow
 
-### 1. Create Branch
+### 1. Create a branch
+
+Keep your fork up to date, then branch from `main`:
 
 ```bash
+git fetch upstream
+git checkout main
+git rebase upstream/main
 git checkout -b <type>/<short-description>
 ```
 
@@ -154,12 +168,20 @@ EOF
 )"
 ```
 
-### 4. Create Pull Request
+### 4. Push and open a pull request
+
+Push to your fork, then open a PR against `datadog-labs/pup:main`:
+
+```bash
+git push -u origin <type>/<short-description>
+```
 
 Use `gh` CLI for efficiency:
 
 ```bash
 gh pr create \
+  --repo datadog-labs/pup \
+  --head <your-username>:<branch-name> \
   --title "<type>(<scope>): <clear, concise title>" \
   --body "$(cat <<'EOF'
 ## Summary
@@ -202,6 +224,8 @@ EOF
 **Example PR:**
 ```bash
 gh pr create \
+  --repo datadog-labs/pup \
+  --head your-username:feat/oauth2-token-refresh \
   --title "feat(auth): implement OAuth2 token refresh with PKCE" \
   --body "$(cat <<'EOF'
 ## Summary
@@ -233,7 +257,9 @@ EOF
 
 1. **Automated Checks**: CI runs tests, linting, coverage checks
 2. **Human Review**: Maintainer reviews code quality and design
-3. **Address Feedback**: Make requested changes
+3. **Address Feedback**: Push follow-up commits to your branch — avoid
+   force-pushing after review has started, as it makes follow-up reviews
+   harder (GitHub loses track of review comments)
 4. **Approval**: Once approved, PR can be merged
 5. **Merge**: Squash and merge to keep history clean
 
