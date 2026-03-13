@@ -8,7 +8,7 @@ differences you should be aware of when switching.
 
 ## What's the Same
 
-- All 49 command groups with identical subcommands
+- All 53 command groups with identical subcommands
 - JSON, YAML, and table output formats (`--format json|yaml|table`)
 - OAuth2 + API key authentication
 - OS keychain token storage (same service/account names)

@@ -1,6 +1,6 @@
 # Command Reference
 
-Complete reference for all 43 command groups in Pup.
+Complete reference for all 46 command groups in Pup.
 
 ## Command Pattern
 
@@ -64,8 +64,11 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | fleet | agents (list, get, versions), deployments (list, get, configure, upgrade, cancel), schedules (list, get, create, update, delete, trigger) | src/commands/fleet.rs | ✅ |
 | skills | list, install, path | src/commands/skills.rs | ✅ |
 | workflows | get, create, update, delete, run, instances (list, get, cancel) | src/commands/workflows.rs | ✅ |
+| investigations | list, get, trigger | src/commands/investigations.rs | ✅ |
+| change-management | create, get, update, create-branch, decisions (update, delete) | src/commands/change_management.rs | ✅ |
+| app-builder | list, get, create, update, delete, delete-batch, publish, unpublish | src/commands/app_builder.rs | ✅ |
 
-**Summary:** 40 working, 0 API-blocked, 2 placeholders
+**Summary:** 43 working, 0 API-blocked, 2 placeholders
 
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
 
@@ -160,6 +163,8 @@ pup infrastructure hosts list
 - **hamr** - High Availability Multi-Region connections
 - **fleet** - Fleet Automation (agents, deployments, schedules)
 - **workflows** - Workflow Automation (get, create, update, delete, run, instances)
+- **investigations** - Bits AI SRE investigations (list, get, trigger)
+- **change-management** - Change request management (create, get, update, create-branch, decisions)
 
 ### Organization & Access
 - **users** - User management (list, get, roles)
@@ -175,6 +180,7 @@ pup infrastructure hosts list
 - **obs-pipelines** - Observability pipelines (list, get)
 - **misc** - Miscellaneous (ip-ranges, status)
 - **product-analytics** - Product analytics events (send)
+- **app-builder** - Low-code app management (list, get, create, update, delete, publish, unpublish)
 
 ## Global Flags
 

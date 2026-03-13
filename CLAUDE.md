@@ -1,6 +1,6 @@
 # Pup - Datadog API CLI
 
-Rust-based CLI wrapper for Datadog APIs. Provides OAuth2 + API key authentication for 49 command groups with 300+ subcommands across 53 command modules.
+Rust-based CLI wrapper for Datadog APIs. Provides OAuth2 + API key authentication for 53 command groups with 300+ subcommands across 55 command modules.
 
 ## Documentation Index
 
@@ -194,8 +194,8 @@ See [TESTING.md](docs/TESTING.md) for details.
 
 ## Implementation Status
 
-- **53 command modules** implemented
-- **300+ subcommands** across 49 command groups
+- **55 command modules** implemented
+- **300+ subcommands** across 53 command groups
 - **60 unit tests** passing
 - **155/155 API output** matches Go version exactly
 - **390/390 command descriptions** match Go version
