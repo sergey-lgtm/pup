@@ -179,16 +179,21 @@ pub async fn run(
             .data
             .as_ref()
             .and_then(|d| d.attributes.as_ref())
-            .and_then(|a| a.additional_properties.get("status"))
+            .and_then(|a| a.additional_properties.get("instanceStatus"))
+            .and_then(|v| v.get("detailsKind"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
+        eprintln!("  status: {state}");
+
+        // Treat any state other than the known in-progress states as terminal.
+        // This avoids polling forever if the API introduces new terminal states.
         match state {
-            "COMPLETED" | "FAILED" | "CANCELED" | "CANCELLED" | "ERROR" => {
+            "" | "IN_PROGRESS" => continue,
+            _ => {
                 formatter::output(cfg, &status)?;
                 return Ok(());
             }
-            _ => continue,
         }
     }
 }
