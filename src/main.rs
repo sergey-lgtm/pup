@@ -7490,7 +7490,7 @@ async fn main_inner() -> anyhow::Result<()> {
             if install {
                 commands::completions::install(shell)?;
             } else {
-                clap_complete::generate(shell, &mut Cli::command(), "pup", &mut std::io::stdout());
+                commands::completions::generate(shell);
             }
         }
         Commands::Version => println!("{}", version::build_info()),
